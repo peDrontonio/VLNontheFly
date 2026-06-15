@@ -1,0 +1,67 @@
+edgellm_vlm_node:
+  ros__parameters:
+    # Inference backend to use: "mock" for ROS/bag testing, "edgellm" for TensorRT Edge-LLM.
+    backend_type: "edgellm"
+
+    # Directory containing the built TensorRT LLM engine.
+    engine_dir: "/home/orin/imav/tensorrt-edgellm-workspace/Qwen3.5-2B/int4_awq/engines/llm"
+
+    # Directory containing the built TensorRT visual/multimodal engine.
+    multimodal_engine_dir: "/home/orin/imav/tensorrt-edgellm-workspace/Qwen3.5-2B/int4_awq/engines/visual"
+
+    # TensorRT Edge-LLM plugin shared library loaded before runtime initialization.
+    plugin_path: "/home/orin/TensorRT-Edge-LLM/build/libNvInfer_edgellm_plugin.so"
+
+    # RGB image topic from the D435i driver or rosbag replay.
+    image_topic: "/camera/camera/color/image_raw"
+
+    # Fixed inference trigger rate in Hz; ticks are skipped while inference is busy.
+    fixed_rate_hz: 0.5
+
+    # Maximum number of tokens to generate for one image request.
+    max_generate_length: 48
+
+    # Sampling temperature; lower values make output more deterministic.
+    # Kept low for stable JSON, but not so low the model freezes on one answer.
+    temperature: 0.5
+
+    # Nucleus sampling probability mass.
+    top_p: 0.9
+
+    # Top-k sampling limit.
+    top_k: 40
+
+    # Number of generated tokens between partial-text publications.
+    stream_interval: 4
+
+    # Publish streamed token chunks on ~/partial_text before the final result.
+    publish_partials: false
+
+    # Startup prompt profile: "point" for pixel goals, "primitive" for movement primitives.
+    prompt_mode: "primitive"
+
+    # System instruction for point-mode VLM requests.
+    point_system_prompt: "You are a drone image-goal selector. The input image is exactly 640 pixels wide and 480 pixels tall. Choose one safe, reachable point on the ground or in an open corridor that the drone can move toward while staying at the same altitude, and return exactly one minified JSON object on one line in this format: {\"u\":320,\"v\":240,\"confidence\":0.8}. u is a SINGLE integer: the horizontal pixel column (x) of that point. u must be between 0 and 639 inclusive. v is a SINGLE integer: the vertical pixel row (y) of that point. v must be between 0 and 479 inclusive. Never output a coordinate outside these ranges and never invent a position you cannot actually see in the image. Never use arrays or lists; u and v are each one number, not a pair. Prefer the center of free space when uncertain. confidence is a decimal between 0 and 1 with exactly ONE digit after the decimal point, for example 0.8 when the chosen point is clearly safe and 0.0 when no safe point is visible; never write more than one decimal digit. Output the closing brace and then stop. Do not include markdown, prose, whitespace, or extra keys."
+
+    # User prompt for point-mode VLM requests.
+    point_user_prompt: "Select one safe navigation point in the current RGB image. Return JSON only."
+
+    # System instruction for primitive-mode VLM requests.
+    primitive_system_prompt: "You are a drone movement controller looking at a forward-facing camera. Choose the single best movement primitive to navigate safely through open space and avoid obstacles, using these rules: FORWARD when the center of the image is open and the path straight ahead is clear. LEFT when an obstacle is ahead or on the right and there is open space on the left. RIGHT when an obstacle is ahead or on the left and there is open space on the right. BACK when obstacles block the view ahead and there is no clear opening to the left or right. UP when a low obstacle, wall, or surface fills the lower part of the image and there is open space above it. DOWN when the image is wide open with the floor or ground far below and it is safe to descend. HOLD is a last resort: output HOLD ONLY when an obstacle blocks every direction within about one meter so that no movement is safe. In every other situation you MUST output a movement (FORWARD, BACK, LEFT, RIGHT, UP, or DOWN); when the path ahead looks open, output FORWARD. Do not output HOLD just because the scene looks calm. Return exactly one minified JSON object on one line in this format: {\"primitive\":\"FORWARD\",\"distance_m\":0.5,\"confidence\":0.8}. The only allowed primitive values are HOLD, FORWARD, BACK, LEFT, RIGHT, UP, and DOWN. distance_m MUST be exactly 0.0 when primitive is HOLD, and exactly 0.5 or 1.0 for any movement. confidence is a decimal between 0 and 1 with exactly ONE digit after the decimal point, for example 0.8; never write more than one decimal digit. Output the closing brace and then stop. Do not include reason, markdown, prose, whitespace, or extra keys."
+
+    # User prompt for primitive-mode VLM requests.
+    primitive_user_prompt: "Look at the current camera image and choose one movement primitive (FORWARD, BACK, LEFT, RIGHT, UP, DOWN, or HOLD) using the movement rules. Return JSON only."
+
+    # System instruction for region-mode VLM requests. The image is split into a
+    # coarse 3x3 grid and the VLM picks the most open region to move toward; the
+    # region gate validates the choice against depth, so the VLM only needs a
+    # coarse preference, never coordinates.
+    region_system_prompt: "You are a drone navigation assistant. The image is divided into a 3x3 grid of regions named TOP-LEFT, TOP-CENTER, TOP-RIGHT, MIDDLE-LEFT, CENTER, MIDDLE-RIGHT, BOTTOM-LEFT, BOTTOM-CENTER, BOTTOM-RIGHT. Choose the ONE region that contains the most open, safe free space to move toward. Return exactly one minified JSON object on one line in this format: {\"region\":\"CENTER\",\"confidence\":0.8}. region MUST be exactly one of the nine names. confidence is a decimal between 0 and 1 with exactly ONE digit after the decimal point. Output the closing brace and then stop. Do not include markdown, prose, whitespace, or extra keys."
+
+    # User prompt for region-mode VLM requests.
+    region_user_prompt: "Which grid region has the most open space to move toward? Return JSON only."
+
+    # When non-empty, region mode looks for this object (e.g. "tripod", "red chair")
+    # instead of generic open space, and overrides the region prompts above with an
+    # object-finding template. Pair with selection_mode: "target" in region_gate.yaml.
+    target_object: "orange trash bin"

@@ -1,0 +1,65 @@
+vlm_point_gate:
+  ros__parameters:
+    # VLM result topic containing the final point JSON string from edgellm_vlm_node.
+    vlm_result_topic: "/edgellm_vlm_node/result"
+
+    # D435i depth image topic used to recover metric depth at the selected pixel.
+    depth_topic: "/camera/camera/depth/image_rect_raw"
+
+    # CameraInfo topic matching the depth image intrinsics.
+    depth_camera_info_topic: "/camera/camera/depth/camera_info"
+
+    # RGB CameraInfo topic used to validate VLM pixel coordinates when result metadata is missing.
+    color_camera_info_topic: "/camera/camera/color/camera_info"
+
+    # Optional ENU nav_msgs/Odometry fallback; leave empty when using PX4 local position directly.
+    odometry_topic: ""
+
+    # Optional ENU PoseStamped fallback; leave empty when using PX4 local position directly.
+    pose_topic: ""
+
+    # PX4 fused local position topic used as the primary drone pose source; converted NED -> ENU.
+    vehicle_local_position_topic: "/fmu/out/vehicle_local_position"
+
+    # Body-relative goal topic consumed by relative_goal_to_map, which composes
+    # the offset with odometry into /move_base_simple/goal for ego-planner.
+    goal_topic: "/relative_goal"
+
+    # Frame the published offset is expressed in: base_link FLU (+x fwd, +y left, +z up).
+    goal_frame_id: "base_link"
+
+    # Minimum VLM confidence required before a point can be executed.
+    min_confidence: 0.60
+
+    # Depth scale for 16UC1 depth images; RealSense depth is usually millimeters.
+    depth_scale_m: 0.001
+
+    # Radius around the selected pixel used for median valid depth sampling.
+    depth_sample_radius_px: 4
+
+    # Minimum valid depth accepted at the selected point.
+    min_depth_m: 0.25
+
+    # Maximum valid depth accepted at the selected point.
+    max_depth_m: 4.0
+
+    # Maximum horizontal distance for one published point goal; longer projections are clamped.
+    max_goal_distance_m: 1.5
+
+    # Z behavior for point goals: "current_pose" keeps the current z plane; "fixed" uses fixed_goal_z_m.
+    goal_z_mode: "current_pose"
+
+    # Fixed ENU z value used when goal_z_mode is "fixed".
+    fixed_goal_z_m: 1.0
+
+    # Minimum time between published ego-planner goals.
+    cooldown_s: 2.0
+
+    # Maximum age of the latest accepted VLM point result when execute_next is called.
+    max_result_age_s: 2.5
+
+    # Maximum age of the latest depth image when execute_next is called.
+    max_depth_age_s: 0.5
+
+    # Maximum age of the latest pose message when execute_next is called.
+    max_pose_age_s: 1.0

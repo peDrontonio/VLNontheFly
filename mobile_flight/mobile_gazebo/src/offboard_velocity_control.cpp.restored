@@ -1,0 +1,360 @@
+#include <rclcpp/rclcpp.hpp>
+#include <px4_msgs/msg/offboard_control_mode.hpp>
+#include <px4_msgs/msg/trajectory_setpoint.hpp>
+#include <px4_msgs/msg/vehicle_command.hpp>
+#include <px4_msgs/msg/vehicle_local_position.hpp>
+#include <px4_msgs/msg/vehicle_status.hpp>
+#include <px4_msgs/msg/timesync_status.hpp>
+#include <px4_msgs/msg/battery_status.hpp>
+#include <px4_msgs/msg/estimator_status.hpp>
+#include <px4_msgs/msg/sensor_gps.hpp>
+#include <std_srvs/srv/trigger.hpp>
+#include <mobile_msgs/srv/set_velocity.hpp>
+#include <mobile_msgs/srv/takeoff.hpp>
+#include <cmath>
+#include <algorithm>
+
+using namespace std::chrono_literals;
+
+class OffboardVelocityControl : public rclcpp::Node {
+public:
+    OffboardVelocityControl() : Node("offboard_velocity_control") {
+        offboard_control_mode_publisher_ = this->create_publisher<px4_msgs::msg::OffboardControlMode>("/fmu/in/offboard_control_mode", 10);
+        trajectory_setpoint_publisher_ = this->create_publisher<px4_msgs::msg::TrajectorySetpoint>("/fmu/in/trajectory_setpoint", 10);
+        vehicle_command_publisher_ = this->create_publisher<px4_msgs::msg::VehicleCommand>("/fmu/in/vehicle_command", 10);
+
+        local_position_sub_ = this->create_subscription<px4_msgs::msg::VehicleLocalPosition>(
+            "/fmu/out/vehicle_local_position", 
+            rclcpp::SensorDataQoS(),
+            std::bind(&OffboardVelocityControl::local_position_callback, this, std::placeholders::_1));
+
+        vehicle_status_sub_ = this->create_subscription<px4_msgs::msg::VehicleStatus>(
+            "/fmu/out/vehicle_status", 
+            rclcpp::SensorDataQoS(),
+            std::bind(&OffboardVelocityControl::vehicle_status_callback, this, std::placeholders::_1));
+
+        timesync_sub_ = this->create_subscription<px4_msgs::msg::TimesyncStatus>(
+            "/fmu/out/timesync_status", 
+            rclcpp::SensorDataQoS(),
+            std::bind(&OffboardVelocityControl::timesync_callback, this, std::placeholders::_1));
+
+        battery_status_sub_ = this->create_subscription<px4_msgs::msg::BatteryStatus>(
+            "/fmu/out/battery_status",
+            rclcpp::SensorDataQoS(),
+            std::bind(&OffboardVelocityControl::battery_status_callback, this, std::placeholders::_1));
+
+        estimator_status_sub_ = this->create_subscription<px4_msgs::msg::EstimatorStatus>(
+            "/fmu/out/estimator_status",
+            rclcpp::SensorDataQoS(),
+            std::bind(&OffboardVelocityControl::estimator_status_callback, this, std::placeholders::_1));
+
+        sensor_gps_sub_ = this->create_subscription<px4_msgs::msg::SensorGps>(
+            "/fmu/out/vehicle_gps_position",
+            rclcpp::SensorDataQoS(),
+            std::bind(&OffboardVelocityControl::sensor_gps_callback, this, std::placeholders::_1));
+
+        arm_srv_ = this->create_service<std_srvs::srv::Trigger>("arm", std::bind(&OffboardVelocityControl::arm_callback, this, std::placeholders::_1, std::placeholders::_2));
+        land_srv_ = this->create_service<std_srvs::srv::Trigger>("land", std::bind(&OffboardVelocityControl::land_callback, this, std::placeholders::_1, std::placeholders::_2));
+        estop_srv_ = this->create_service<std_srvs::srv::Trigger>("estop", std::bind(&OffboardVelocityControl::estop_callback, this, std::placeholders::_1, std::placeholders::_2));
+        
+        last_command_time_ = this->get_clock()->now();
+        takeoff_srv_ = this->create_service<mobile_msgs::srv::Takeoff>("takeoff", std::bind(&OffboardVelocityControl::takeoff_callback, this, std::placeholders::_1, std::placeholders::_2));
+        
+        set_velocity_srv_ = this->create_service<mobile_msgs::srv::SetVelocity>(
+            "set_velocity", std::bind(&OffboardVelocityControl::set_velocity_callback, this, std::placeholders::_1, std::placeholders::_2));
+
+        timer_ = this->create_wall_timer(100ms, std::bind(&OffboardVelocityControl::timer_callback, this));
+        
+        RCLCPP_INFO(this->get_logger(), "Offboard Velocity Control Node Started. Waiting for commands...");
+    }
+
+private:
+    enum class State { INIT, TAKEOFF, VELOCITY };
+    State current_state_ = State::INIT;
+
+    rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_control_mode_publisher_;
+    rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr trajectory_setpoint_publisher_;
+    rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr vehicle_command_publisher_;
+    rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr local_position_sub_;
+    rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
+    rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_sub_;
+    rclcpp::Subscription<px4_msgs::msg::BatteryStatus>::SharedPtr battery_status_sub_;
+    rclcpp::Subscription<px4_msgs::msg::EstimatorStatus>::SharedPtr estimator_status_sub_;
+    rclcpp::Subscription<px4_msgs::msg::SensorGps>::SharedPtr sensor_gps_sub_;
+
+    // Telemetry state
+    uint8_t nav_state_ = 0;
+    uint8_t arming_state_ = 0;
+    float battery_voltage_ = 0.0;
+    float battery_remaining_ = 0.0;
+    bool estimator_good_ = false;
+    uint8_t gps_fix_type_ = 0;
+    uint8_t gps_satellites_ = 0;
+
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr arm_srv_;
+    rclcpp::Service<std_srovs::srv::Trigger>::SharedPtr land_srv_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr estop_srv_;
+    
+    rclcpp::Time last_command_time_;
+    rclcpp::Time last_timesync_time_;
+    bool estop_active_ = false;
+
+    // Safety constraints
+    const float MAX_VELOCITY = 5.0; // m/s
+    const float MAX_Z_VELOCITY = 2.0; // m/s
+    const float MAX_ALTITUDE = -50.0; // NED frame, negative is up
+
+    rclcpp::Service<mobile_msgs::srv::Takeoff>::SharedPtr takeoff_srv_;
+    rclcpp::Service<mobile_msgs::srv::SetVelocity>::SharedPtr set_velocity_srv_;
+
+    float current_yaw_ = 0.0;
+    float target_takeoff_altitude_ = -5.0; // NED frame, negative is up
+    
+    // Custom Velocity state
+    float target_vx_ = 0.0;
+    float target_vy_ = 0.0;
+    float target_vz_ = 0.0;
+    float target_yaw_ = 0.0;
+    std::string frame_id_ = "local";
+    rclcpp::Time velocity_end_time_;
+
+    void local_position_callback(const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
+        current_yaw_ = msg->heading;
+    }
+
+    void vehicle_status_callback(const px4_msgs::msg::VehicleStatus::SharedPtr msg) {
+        nav_state_ = msg->nav_state;
+        arming_state_ = msg->arming_state;
+    }
+
+    void battery_status_callback(const px4_msgs::msg::BatteryStatus::SharedPtr msg) {
+        battery_voltage_ = msg->voltage_v;
+        battery_remaining_ = msg->remaining;
+    }
+
+    void estimator_status_callback(const px4_msgs::msg::EstimatorStatus::SharedPtr msg) {
+        // Check if horizontal/vertical velocity and position are valid based on solution_status_flags
+        bool horiz_vel_ok = (msg->solution_status_flags & (1 << 1)) != 0;
+        bool vert_vel_ok = (msg->solution_status_flags & (1 << 2)) != 0;
+        bool horiz_pos_ok = (msg->solution_status_flags & (1 << 3)) != 0;
+        
+        estimator_good_ = (horiz_vel_ok && vert_vel_ok && horiz_pos_ok);
+    }
+
+    void sensor_gps_callback(const px4_msgs::msg::SensorGps::SharedPtr msg) {
+        gps_fix_type_ = msg->fix_type;
+        gps_satellites_ = msg->satellites_used;
+    }
+
+    void timesync_callback(const px4_msgs::msg::TimesyncStatus::SharedPtr msg) {
+        (void)msg;
+        last_timesync_time_ = this->get_clock()->now();
+    }
+
+    void arm_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request, std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+        (void)request;
+        if (estop_active_) {
+            response->success = false;
+            response->message = "Cannot arm, ESTOP active!";
+            return;
+        }
+        
+        if (!estimator_good_) {
+            response->success = false;
+            response->message = "Estimator not ready (Missing Pos/Vel)";
+            RCLCPP_ERROR(this->get_logger(), "Arming rejected: Estimator reports bad position or velocity");
+            return;
+        }
+        publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, 6); // Mode: Offboard
+        publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0);
+        response->success = true;
+        response->message = "Switched to Offboard mode and sent Arm command";
+        RCLCPP_INFO(this->get_logger(), "Switched to Offboard mode and sent Arm command");
+    }
+
+    void takeoff_callback(const std::shared_ptr<mobile_msgs::srv::Takeoff::Request> request, std::shared_ptr<mobile_msgs::srv::Takeoff::Response> response) {
+        if (estop_active_) {
+            response->success = false;
+            response->message = "Cannot takeoff, ESTOP active";
+            return;
+        }
+
+        if (!estimator_good_) {
+            RCLCPP_WARN(this->get_logger(), "Takeoff rejected: Estimator hasn't fused position/velocity correctly yet!");
+            response->success = false;
+            response->message = "Estimator not ready";
+            return;
+        }
+
+        if (battery_remaining_ > 0.0 && battery_remaining_ < 0.15) {
+            RCLCPP_WARN(this->get_logger(), "Takeoff conditionally warned: Battery below 15%% (%.2f%%)", battery_remaining_ * 100.0f);
+            // Optionally, we could reject takeoff here
+        }
+        
+        RCLCPP_INFO(this->get_logger(), "Telemetry Check passed. ArmState: %d, NavState: %d, GPS Fix: %d, Sats: %d", 
+                    arming_state_, nav_state_, gps_fix_type_, gps_satellites_);
+
+        last_command_time_ = this->get_clock()->now();
+        current_state_ = State::TAKEOFF;
+        
+        // Convert positive altitude to NED Frame (negative z)
+        target_takeoff_altitude_ = -std::abs(request->altitude);
+        if (target_takeoff_altitude_ == 0.0) {
+            target_takeoff_altitude_ = -5.0; // Default
+        }
+        
+        // Altitude limit clamp
+        if (target_takeoff_altitude_ < MAX_ALTITUDE) {
+            target_takeoff_altitude_ = MAX_ALTITUDE;
+        }
+        
+        publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, 6); // Mode: Offboard
+        publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0);
+        response->success = true;
+        response->message = "Arming and Takeoff initiated";
+        RCLCPP_INFO(this->get_logger(), "Takeoff initiated (Offboard mode target: %.2f m altitude)", request->altitude);
+    }
+
+    void land_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request, std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+        (void)request;
+        current_state_ = State::INIT;
+        publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_NAV_LAND);
+        response->success = true;
+        response->message = "Landing commanded";
+        RCLCPP_INFO(this->get_logger(), "Land command sent via VehicleCommand.");
+    }
+
+    void estop_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request, std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+        (void)request;
+        estop_active_ = true;
+        current_state_ = State::INIT;
+        publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_NAV_LAND); // Emergency land
+        response->success = true;
+        response->message = "ESTOP EXECUTED!";
+        RCLCPP_WARN(this->get_logger(), "EMERGENCY STOP!");
+    }
+
+    void set_velocity_callback(const std::shared_ptr<mobile_msgs::srv::SetVelocity::Request> request, std::shared_ptr<mobile_msgs::srv::SetVelocity::Response> response) {
+        if (estop_active_) {
+            response->success = false;
+            response->message = "Cannot set velocity, ESTOP active";
+            return;
+        }
+        last_command_time_ = this->get_clock()->now();
+        current_state_ = State::VELOCITY;
+        
+        // Clamp velocities
+        target_vx_ = std::clamp(request->vx, -MAX_VELOCITY, MAX_VELOCITY);
+        target_vy_ = std::clamp(request->vy, -MAX_VELOCITY, MAX_VELOCITY);
+        target_vz_ = std::clamp(request->vz, -MAX_Z_VELOCITY, MAX_Z_VELOCITY);
+        target_yaw_ = request->yaw;
+        frame_id_ = request->frame_id;
+        
+        if (request->duration > 0.0) {
+            velocity_end_time_ = this->get_clock()->now() + rclcpp::Duration::from_seconds(request->duration);
+        } else {
+            // If duration <= 0, consider it infinite (we set a very far future time)
+            velocity_end_time_ = this->get_clock()->now() + rclcpp::Duration::from_seconds(999999.0);
+        }
+
+        if (request->auto_arm) {
+            publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1, 6);
+            publish_vehicle_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0);
+            RCLCPP_INFO(this->get_logger(), "Auto-armed drone.");
+        }
+
+        response->success = true;
+        response->message = "Velocity command applied.";
+        RCLCPP_INFO(this->get_logger(), "Velocity command received. Vx: %.2f Vy: %.2f Vz: %.2f Frame: %s Duration: %.2f", 
+            target_vx_, target_vy_, target_vz_, frame_id_.c_str(), request->duration);
+    }
+
+    void timer_callback() {
+        if (estop_active_) return; 
+        
+        auto now = this->get_clock()->now();
+        
+        // Time sync heartbeat
+        if (last_timesync_time_.nanoseconds() > 0 && (now - last_timesync_time_).seconds() > 2.0) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "XRCE-DDS connection lost! No timesync for >2s");
+        }
+
+        // Companion computer heartbeat monitoring
+        if (current_state_ == State::VELOCITY && (now - last_command_time_).seconds() > 5.0) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "No companion commands for 5s. Auto-hovering (Heartbeat failsafe).");
+            velocity_end_time_ = now; // Force hover in place by invalidating duration
+        }
+
+        publish_offboard_control_mode();
+        publish_trajectory_setpoint();
+    }
+
+    void publish_offboard_control_mode() {
+        px4_msgs::msg::OffboardControlMode msg{};
+        msg.position = (current_state_ == State::TAKEOFF);
+        msg.velocity = (current_state_ == State::VELOCITY || current_state_ == State::INIT);
+        msg.acceleration = false;
+        msg.attitude = false;
+        msg.body_rate = false;
+        msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
+        offboard_control_mode_publisher_->publish(msg);
+    }
+
+    void publish_trajectory_setpoint() {
+        px4_msgs::msg::TrajectorySetpoint msg{};
+        if (current_state_ == State::TAKEOFF) {
+            msg.position = {0.0, 0.0, target_takeoff_altitude_};
+            msg.velocity = {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()};
+            msg.yaw = 0.0;
+        } else if (current_state_ == State::VELOCITY) {
+            if (this->get_clock()->now() < velocity_end_time_) {
+                float out_vx = target_vx_;
+                float out_vy = target_vy_;
+                float out_vz = target_vz_;
+
+                if (frame_id_ == "body") {
+                    // Rotate body to local NED using current yaw
+                    out_vx = target_vx_ * std::cos(current_yaw_) - target_vy_ * std::sin(current_yaw_);
+                    out_vy = target_vx_ * std::sin(current_yaw_) + target_vy_ * std::cos(current_yaw_);
+                }
+
+                msg.position = {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()};
+                msg.velocity = {out_vx, out_vy, out_vz}; 
+                msg.yaw = target_yaw_; 
+            } else {
+                // Time is up, hover in place
+                msg.position = {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()};
+                msg.velocity = {0.0, 0.0, 0.0}; 
+                msg.yaw = target_yaw_; 
+            }
+        } else { // INIT
+            msg.position = {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()};
+            msg.velocity = {0.0, 0.0, 0.0}; 
+            msg.yaw = 0.0;
+        }
+        msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
+        trajectory_setpoint_publisher_->publish(msg);
+    }
+
+    void publish_vehicle_command(uint16_t command, float param1 = 0.0, float param2 = 0.0) {
+        px4_msgs::msg::VehicleCommand msg{};
+        msg.param1 = param1;
+        msg.param2 = param2;
+        msg.command = command;
+        msg.target_system = 1;
+        msg.target_component = 1;
+        msg.source_system = 1;
+        msg.source_component = 1;
+        msg.from_external = true;
+        msg.timestamp = this->get_clock()->now().nanoseconds() / 1000;
+        vehicle_command_publisher_->publish(msg);
+    }
+};
+
+int main(int argc, char *argv[]) {
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<OffboardVelocityControl>());
+    rclcpp::shutdown();
+    return 0;
+}

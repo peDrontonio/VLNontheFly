@@ -1,0 +1,84 @@
+vlm_region_gate:
+  ros__parameters:
+    # Closed-loop preset: auto-publishes goals (no execute_next service call) and
+    # uses color-aligned depth so the region->pixel->depth mapping is accurate.
+    # Use this with the full flight pipeline (planner ego_raptor.launch.py).
+    # For careful bench testing use region_gate.yaml instead (auto_execute: false).
+
+    # VLM result topic containing the region JSON string from edgellm_vlm_node.
+    vlm_result_topic: "/edgellm_vlm_node/result"
+
+    # Color-aligned depth so depth pixels line up 1:1 with the RGB the VLM saw.
+    depth_topic: "/camera/camera/aligned_depth_to_color/image_raw"
+
+    # CameraInfo matching the aligned depth (equals the color intrinsics).
+    depth_camera_info_topic: "/camera/camera/aligned_depth_to_color/camera_info"
+
+    # Optional ENU nav_msgs/Odometry fallback; leave empty when using PX4 local position directly.
+    odometry_topic: ""
+
+    # Optional ENU PoseStamped fallback; leave empty when using PX4 local position directly.
+    pose_topic: ""
+
+    # PX4 fused local position topic used as the primary drone pose source; converted NED -> ENU.
+    vehicle_local_position_topic: "/fmu/out/vehicle_local_position"
+
+    # Body-relative goal topic consumed by relative_goal_to_map, which composes
+    # the offset with odometry into /move_base_simple/goal for ego-planner.
+    goal_topic: "/relative_goal"
+
+    # Frame the published offset is expressed in: base_link FLU (+x fwd, +y left, +z up).
+    goal_frame_id: "base_link"
+
+    # Coarse image grid the VLM selects a region from. Must match region_system_prompt.
+    grid_cols: 3
+    grid_rows: 3
+
+    # Approach the region the VLM reports the target object in; HOLD when not found.
+    # Pair with prompt_mode:=region and target_object set on edgellm_vlm_node.
+    selection_mode: "target"
+
+    # Only applies to "open_space" mode; ignored in "target" mode.
+    use_vlm_region: true
+
+    # Minimum VLM confidence required before its chosen region is used.
+    min_confidence: 0.50
+
+    # A region must have at least this much clear depth (m) to count as open (open_space mode).
+    min_clearance_m: 0.8
+
+    # Stop this far (m) short of the target surface in "target" mode.
+    standoff_m: 0.8
+
+    # Publish a goal automatically on each usable decision (subject to cooldown). No execute_next needed.
+    auto_execute: true
+
+    # Depth scale for 16UC1 depth images; RealSense depth is usually millimeters.
+    depth_scale_m: 0.001
+
+    # Minimum valid depth accepted within a region.
+    min_depth_m: 0.25
+
+    # Maximum valid depth accepted within a region.
+    max_depth_m: 4.0
+
+    # Maximum horizontal distance for one published goal; longer projections are clamped.
+    max_goal_distance_m: 1.5
+
+    # Z behavior: "current_pose" keeps the current z plane; "fixed" uses fixed_goal_z_m.
+    goal_z_mode: "current_pose"
+
+    # Fixed ENU z value used when goal_z_mode is "fixed".
+    fixed_goal_z_m: 1.0
+
+    # Minimum time between published ego-planner goals.
+    cooldown_s: 2.0
+
+    # Maximum age of the latest VLM region result when publishing a goal.
+    max_result_age_s: 2.5
+
+    # Maximum age of the latest depth image when publishing a goal.
+    max_depth_age_s: 0.5
+
+    # Maximum age of the latest pose message when publishing a goal.
+    max_pose_age_s: 1.0

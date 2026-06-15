@@ -1,0 +1,14 @@
+planner_node:
+ ros__parameters:
+  intrinsic: [603.5625610351562, 0.0, 315.85888671875, 0.0, 603.0252075195312, 249.46749877929688, 0.0, 0.0, 1.0]
+  planner_max_frequency: 60.0
+  goal_range: 5.0
+  depth_height: 360
+  depth_width: 640
+  trajectories_folder: "/home/orin/ros2_ws/src/planner_wrapper/trajectories/"
+  stop_threshold: -3.0
+
+controller_node:
+ ros__parameters:
+  controller_max_frequency: 120.0
+  speed: 0.5

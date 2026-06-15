@@ -1,0 +1,44 @@
+vlm_primitive_gate:
+  ros__parameters:
+    # VLM result topic containing the final JSON string from edgellm_vlm_node.
+    vlm_result_topic: "/edgellm_vlm_node/result"
+
+    # Optional ENU nav_msgs/Odometry fallback; leave empty when using PX4 local position directly.
+    odometry_topic: ""
+
+    # Optional ENU PoseStamped fallback; leave empty when using PX4 local position directly.
+    pose_topic: ""
+
+    # PX4 fused local position topic used as the primary drone pose source; converted NED -> ENU.
+    vehicle_local_position_topic: "/fmu/out/vehicle_local_position"
+
+    # Body-relative goal topic consumed by relative_goal_to_map, which composes
+    # the offset with odometry into /move_base_simple/goal for ego-planner.
+    goal_topic: "/relative_goal"
+
+    # Frame the published offset is expressed in: base_link FLU (+x fwd, +y left, +z up).
+    goal_frame_id: "base_link"
+
+    # Minimum VLM confidence required before a primitive can be executed.
+    min_confidence: 0.65
+
+    # Maximum allowed relative translation for a single primitive.
+    max_translation_m: 1.0
+
+    # Exact movement distances accepted from the VLM for translation primitives.
+    allowed_distances_m: [0.5, 1.0]
+
+    # Minimum time between published ego-planner goals.
+    cooldown_s: 3.0
+
+    # Maximum age of the latest accepted VLM result when execute_next is called.
+    max_result_age_s: 2.5
+
+    # Maximum age of the latest pose source message when execute_next is called.
+    max_odom_age_s: 1.0
+
+    # Lower z clamp for generated ENU goals.
+    min_goal_z_m: 0.0
+
+    # Upper z clamp for generated ENU goals.
+    max_goal_z_m: 3.0
