@@ -41,7 +41,7 @@ isolate one variable at a time:
 ```bash
 ros2 launch planner ego_raptor.launch.py \
   with_xrce:=true \
-  with_optitrack:=true pose_topic:=/drone/pose \
+  with_optitrack:=true \
   with_realsense:=true \
   set_external:=false
 ```
@@ -52,8 +52,8 @@ Important defaults:
   QGC/MAVLink console (`rl_tools_commander set_mode EXTERNAL`) or run `set_external_mode.py`
   only when the MAVLink endpoint is free.
 - `with_realsense:=false`: not needed for Stage 2; required for full planner Stage 3.
-- `with_optitrack:=false`: if enabled, `pose_topic` must match the live OptiTrack
-  `geometry_msgs/PoseStamped` topic (`/drone/pose` or `/robot/pose`).
+- `with_optitrack:=false`: if enabled, the production wrapper consumes the tracked
+  `base_link` pose from `/base_link/pose`.
 - Do **not** run `mobile_gazebo ego_planner_flight.launch.py` at the same time as
   `ego_raptor`; it starts the old offboard velocity controller and duplicates parts of the
   stack.
@@ -71,12 +71,11 @@ Important defaults:
 
 Must be running:
 
-- [ ] OptiTrack PC streaming to the ROS mocap topic (`/drone/pose` or `/robot/pose`).
+- [ ] OptiTrack PC streaming the tracked body pose on `/base_link/pose`.
 - [ ] MAVProxy for QGC only:
       `mavproxy.py --master=/dev/ttyACM0 --baudrate=57600 --out=udpout:192.168.0.233:14550`
 - [ ] Raptor wrapper with DDS + OptiTrack bridge, no planner:
-      `ros2 launch planner ego_raptor.launch.py start_planner:=false with_xrce:=true with_optitrack:=true pose_topic:=/drone/pose set_external:=false`
-      (use `pose_topic:=/robot/pose` if that is the live topic).
+      `ros2 launch planner ego_raptor.launch.py start_planner:=false with_xrce:=true with_optitrack:=true set_external:=false`.
 
 Must **not** be running:
 
@@ -126,7 +125,7 @@ Setup (before the flight):
 ros2 launch planner ego_raptor.launch.py \
   start_planner:=false \
   with_xrce:=true \
-  with_optitrack:=true pose_topic:=/drone/pose \
+  with_optitrack:=true \
   set_external:=false
 ros2 bag record /odometry /drone_0_planning/pos_cmd /fmu/in/trajectory_setpoint_raptor /fmu/out/vehicle_local_position
 ```
@@ -170,7 +169,7 @@ tripod layout changes.
 
 ### What the zero point is
 
-All gate numbers live in the **planner world frame**: the frame `/odometry` reports,
+All gate numbers live in the planner **`map` frame**: the frame `/odometry` reports,
 i.e. the ENU conversion of the PX4 EKF local frame. With OptiTrack fused into the EKF this
 is *nominally* the OptiTrack calibration origin (where the calibration square sat on the
 floor, ground = z 0) — but the authoritative answer is **whatever `/odometry` reads**, and
@@ -185,7 +184,7 @@ that will judge the goals tells you the coordinates of every landmark.
 ros2 launch planner ego_raptor.launch.py \
   start_planner:=false \
   with_xrce:=true \
-  with_optitrack:=true pose_topic:=/drone/pose \
+  with_optitrack:=true \
   set_external:=false
 
 # terminal 2 — sanity first: EKF must have a valid position (OptiTrack fused)
@@ -275,7 +274,7 @@ Setup: RealSense running, RViz on the ground station, and a terminal watching th
 ```bash
 ros2 launch planner ego_raptor.launch.py \
   with_xrce:=true \
-  with_optitrack:=true pose_topic:=/drone/pose \
+  with_optitrack:=true \
   with_realsense:=true \
   set_external:=false
 
@@ -330,8 +329,8 @@ Phase B — hand over to the VLM node:
 
 | Item | Command |
 |------|---------|
-| Pipeline w/o planner | `ros2 launch planner ego_raptor.launch.py start_planner:=false with_xrce:=true with_optitrack:=true pose_topic:=/drone/pose set_external:=false` |
-| Full stack | `ros2 launch planner ego_raptor.launch.py with_xrce:=true with_optitrack:=true pose_topic:=/drone/pose with_realsense:=true set_external:=false` |
+| Pipeline w/o planner | `ros2 launch planner ego_raptor.launch.py start_planner:=false with_xrce:=true with_optitrack:=true set_external:=false` |
+| Full stack | `ros2 launch planner ego_raptor.launch.py with_xrce:=true with_optitrack:=true with_realsense:=true set_external:=false` |
 | Fixed figure-8 | `ros2 run planner fig8_pos_cmd.py` (`size_x, size_y, period, laps, ramp, max_speed`) |
 | Set EXTERNAL manually | FC shell/QGC console: `rl_tools_commander set_mode EXTERNAL`; only use `ros2 run planner set_external_mode.py /dev/ttyACM0` if MAVProxy is not using `/dev/ttyACM0` |
 | FC verify | `rl_tools_commander status` · `listener trajectory_setpoint_raptor` · `dmesg` |

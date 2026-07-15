@@ -11,7 +11,7 @@ Pipeline
   2. RealSense D435i           DEPTH (+ color) — obstacle input for the grid map
   3. optitrack_bridge_node     /drone/pose (mocap) -> /fmu/in/vehicle_visual_odometry (NED)
   4. offboard_velocity_control set_velocity / arm / takeoff / land / estop
-  5. odometry_converter.py     <planner_odom_topic> (NED) -> /odometry (ENU "world")
+  5. odometry_converter.py     <planner_odom_topic> (NED) -> /odometry (ENU "map")
   6. ego_planner + traj_server real_single_drone.launch.py -> /drone_0_planning/pos_cmd
   7. ego_planner_bridge.py     PositionCommand (ENU) -> set_velocity (NED)
 
@@ -23,17 +23,17 @@ What changed vs. the ORB-SLAM stack (flight_stack.launch.py)
 
 ⚠ FIXED-FRAME CONTRACT — read before flying
 --------------------------------------------
-  - The planner lives entirely in the ENU **world** frame: grid_map/frame_id is
-    "world", the FSM markers are "world", and /odometry is stamped "world".
-    => In RViz set **Fixed Frame = world** (the bundled default.rviz already does).
-       Do NOT use "map" (that frame only existed with ORB-SLAM's vio_bridge) or
-       "odom_ned" (the bridge's NED frame — everything would mirror/flip).
+  - The real-flight planner lives entirely in the ENU **map** frame:
+    grid_map/frame_id, FSM markers, trajectory commands, and /odometry all use
+    "map". This launch overrides the shared RViz preset to **Fixed Frame = map**.
+    Do NOT use "world" or "odom_ned" for real flight. "world" is retained only
+    by simulation configurations; "odom_ned" uses PX4's NED convention.
   - optitrack_bridge_node would otherwise broadcast a NED TF
-    (odom_ned -> base_link_frd) that is disconnected from the ENU "world" tree.
+    (odom_ned -> base_link_frd) that is disconnected from the ENU "map" tree.
     We launch it with publish_tf:=false to keep the TF tree clean. The grid map
     does NOT need TF — it reads the body pose straight from /odometry
     (grid_map/pose_type=2) and applies its own fixed camera extrinsic.
-  - The "world" axes are anchored to the drone's heading at bridge startup
+  - The "map" axes are anchored to the drone's heading at bridge startup
     (North = initial forward), origin at the first mocap sample. RViz goals are
     relative to that frame, same as the old ORB-SLAM behaviour.
 
@@ -81,7 +81,7 @@ def generate_launch_description():
             description='Bypass estimator/battery guards in offboard_velocity_control. '
                         'Ground testing ONLY.'),
         DeclareLaunchArgument('with_rviz',  default_value='true',
-            description='Open RViz with the ego_planner default config (Fixed Frame=world).'),
+            description='Open RViz with the shared ego_planner config overridden to Fixed Frame=map.'),
 
         # FC serial link
         DeclareLaunchArgument('device',   default_value='/dev/ttyTHS1'),
@@ -165,7 +165,7 @@ def generate_launch_description():
         parameters=[{'bench_mode': LaunchConfiguration('bench_mode')}],
     )
 
-    # ── 5. NED VehicleOdometry → ENU /odometry (nav_msgs/Odometry, "world") ───
+    # ── 5. NED VehicleOdometry -> ENU /odometry (nav_msgs/Odometry, "map") ────
     odometry_converter = Node(
         package='planner',
         executable='odometry_converter.py',
@@ -195,10 +195,11 @@ def generate_launch_description():
     )
     planner_stage = TimerAction(period=5.0, actions=[ego_planner, ego_planner_bridge])
 
-    # ── RViz (Fixed Frame = world) ───────────────────────────────────────────
+    # The shared RViz preset serves simulations too, so override its fixed frame
+    # here instead of changing default.rviz globally from world to map.
     rviz = Node(
         package='rviz2', executable='rviz2', output='screen',
-        arguments=['--display-config', rviz_config],
+        arguments=['--display-config', rviz_config, '--fixed-frame', 'map'],
         condition=IfCondition(LaunchConfiguration('with_rviz')),
     )
 

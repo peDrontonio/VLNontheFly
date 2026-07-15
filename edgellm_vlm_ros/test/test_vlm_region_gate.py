@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+from geometry_msgs.msg import TransformStamped
 
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
@@ -74,6 +75,123 @@ class ParseRegionTest(unittest.TestCase):
             result_with_text('{"region":"NONE","confidence":0.0}'), self.known)
         self.assertEqual(proposal.region, "NONE")
         self.assertEqual(proposal.confidence, 0.0)
+
+    def test_preserves_rgb_metadata_for_timestamped_tf(self):
+        payload = json.dumps({
+            "text": '{"region":"CENTER","confidence":0.9}',
+            "stamp": 123.25,
+            "frame_id": "camera_color_optical_frame",
+            "image_width": 848,
+            "image_height": 480,
+        })
+        proposal = gate.parse_region_result(payload, self.known)
+        self.assertEqual(proposal.source_stamp_s, 123.25)
+        self.assertEqual(proposal.source_frame_id, "camera_color_optical_frame")
+        self.assertEqual(proposal.image_width, 848)
+        self.assertEqual(proposal.image_height, 480)
+
+
+class GoalArbitrationTest(unittest.TestCase):
+    @staticmethod
+    def accepted(region):
+        return gate.CellDecision(True, "test", 1, 1, region, 2.0)
+
+    def test_requires_consecutive_same_region(self):
+        filt = gate.ConsecutiveRegionFilter(required=3)
+        self.assertFalse(filt.observe(self.accepted("CENTER")))
+        self.assertFalse(filt.observe(self.accepted("CENTER")))
+        self.assertTrue(filt.observe(self.accepted("CENTER")))
+
+    def test_region_change_restarts_consensus(self):
+        filt = gate.ConsecutiveRegionFilter(required=2)
+        self.assertFalse(filt.observe(self.accepted("CENTER")))
+        self.assertFalse(filt.observe(self.accepted("TOP-RIGHT")))
+        self.assertEqual(filt.region, "TOP-RIGHT")
+        self.assertEqual(filt.count, 1)
+
+    def test_rejected_decision_clears_consensus(self):
+        filt = gate.ConsecutiveRegionFilter(required=2)
+        filt.observe(self.accepted("CENTER"))
+        self.assertFalse(filt.observe(gate.CellDecision(False, "blocked")))
+        self.assertIsNone(filt.region)
+        self.assertEqual(filt.count, 0)
+
+    def test_terminal_planner_statuses_release_goal(self):
+        self.assertTrue(gate.planner_status_releases_goal("reached"))
+        self.assertTrue(gate.planner_status_releases_goal("rejected:zone"))
+        self.assertTrue(gate.planner_status_releases_goal("failed:plan"))
+        self.assertFalse(gate.planner_status_releases_goal("accepted"))
+        self.assertFalse(gate.planner_status_releases_goal("accepted:safety_bubble"))
+
+    def test_pose_distance_supports_close_goal_suppression(self):
+        a = gate.PoseStamped()
+        b = gate.PoseStamped()
+        b.pose.position.x = 0.3
+        b.pose.position.y = 0.4
+        self.assertAlmostEqual(gate.pose_distance(a, b), 0.5)
+
+
+class TimestampedMapGoalTest(unittest.TestCase):
+    class FakeBuffer:
+        def __init__(self):
+            self.calls = []
+
+        def lookup_transform(self, target, source, stamp, timeout):
+            del timeout
+            self.calls.append((target, source, stamp.nanoseconds))
+            tf = TransformStamped()
+            tf.header.frame_id = target
+            tf.child_frame_id = source
+            tf.transform.rotation.w = 1.0
+            if target == "base_link":
+                tf.transform.translation.x = 0.2
+            else:
+                tf.transform.translation.x = 10.0
+                tf.transform.translation.z = 2.0
+            return tf
+
+    def test_uses_rgb_timestamp_for_camera_and_map_tf(self):
+        node = object.__new__(gate.VlmRegionGate)
+        node.tf_buffer = self.FakeBuffer()
+        node.body_frame_id = "base_link"
+        node.map_frame_id = "map"
+        node.tf_timeout_s = 0.1
+        node.selection_mode = "open_space"
+        node.max_goal_distance_m = 1.5
+        node.goal_z_mode = "current_pose"
+        node.fixed_goal_z_m = 1.0
+        node.depth_scale_m = 0.001
+        node.min_depth_m = 0.25
+        node.max_depth_m = 4.0
+        node.grid_cols = 1
+        node.grid_rows = 1
+        node._now = lambda: gate.Time(nanoseconds=200_000_000_000)
+
+        depth = gate.Image()
+        depth.header.frame_id = "camera_color_optical_frame"
+        depth.width = 3
+        depth.height = 3
+        depth.encoding = "32FC1"
+        depth.step = 12
+        depth.data = np.full((3, 3), 2.0, dtype=np.float32).tobytes()
+        info = gate.CameraInfo()
+        info.header.frame_id = "camera_color_optical_frame"
+        info.k = [1.0, 0.0, 1.5, 0.0, 1.0, 1.5, 0.0, 0.0, 1.0]
+        proposal = gate.RegionProposal(
+            "CENTER", 0.9, source_stamp_s=123.25,
+            source_frame_id="camera_color_optical_frame")
+        decision = gate.CellDecision(True, "test", 0, 0, "CENTER", 2.0)
+
+        goal, sampled_depth = node._build_map_goal(decision, depth, info, proposal)
+
+        self.assertAlmostEqual(sampled_depth, 2.0)
+        self.assertAlmostEqual(goal.pose.position.x, 10.2)
+        self.assertAlmostEqual(goal.pose.position.z, 2.0)
+        expected_stamp = 123_250_000_000
+        self.assertEqual(node.tf_buffer.calls, [
+            ("base_link", "camera_color_optical_frame", expected_stamp),
+            ("map", "base_link", expected_stamp),
+        ])
 
 
 class StandoffTest(unittest.TestCase):

@@ -3,11 +3,11 @@ vlm_region_gate:
     # VLM result topic containing the region JSON string from edgellm_vlm_node.
     vlm_result_topic: "/edgellm_vlm_node/result"
 
-    # D435i depth image topic used to validate regions and recover metric depth.
-    depth_topic: "/camera/camera/depth/image_rect_raw"
+    # RGB-aligned D435i depth. Region cells must cover the same view the VLM saw.
+    depth_topic: "/camera/camera/aligned_depth_to_color/image_raw"
 
-    # CameraInfo topic matching the depth image intrinsics.
-    depth_camera_info_topic: "/camera/camera/depth/camera_info"
+    # CameraInfo matching the aligned depth/color optical frame.
+    depth_camera_info_topic: "/camera/camera/aligned_depth_to_color/camera_info"
 
     # Optional ENU nav_msgs/Odometry fallback; leave empty when using PX4 local position directly.
     odometry_topic: ""
@@ -18,12 +18,17 @@ vlm_region_gate:
     # PX4 fused local position topic used as the primary drone pose source; converted NED -> ENU.
     vehicle_local_position_topic: "/fmu/out/vehicle_local_position"
 
-    # Body-relative goal topic consumed by relative_goal_to_map, which composes
-    # the offset with odometry into /move_base_simple/goal for ego-planner.
-    goal_topic: "/relative_goal"
+    # Region mode transforms the timestamped RGB-D point directly into map.
+    # This bypasses relative_goal_to_map so inference latency cannot apply the
+    # old observation using the newest odometry.
+    goal_output_mode: "map"
+    goal_topic: "/move_base_simple/goal"
 
-    # Frame the published offset is expressed in: base_link FLU (+x fwd, +y left, +z up).
+    # Legacy relative-output frame plus production TF frames.
     goal_frame_id: "base_link"
+    body_frame_id: "base_link"
+    map_frame_id: "map"
+    planner_status_topic: "/planning/goal_status"
 
     # Coarse image grid the VLM selects a region from. Must match the names in region_system_prompt.
     grid_cols: 3
@@ -48,7 +53,19 @@ vlm_region_gate:
     standoff_m: 0.8
 
     # Publish a goal automatically on each usable decision (subject to cooldown). False = manual via execute_next.
-    auto_execute: false
+    auto_execute: true
+
+    # Require the same accepted cell in this many consecutive VLM results.
+    consistency_required: 3
+
+    # Suppress a candidate closer than this to the last completed/published map goal.
+    goal_update_min_distance_m: 0.5
+
+    # Keep a goal active until planner feedback is reached/rejected/failed.
+    wait_for_planner_status: true
+
+    # Release an active goal after this many consecutive depth checks mark its cell unsafe.
+    safety_loss_required: 2
 
     # Depth scale for 16UC1 depth images; RealSense depth is usually millimeters.
     depth_scale_m: 0.001
@@ -79,3 +96,9 @@ vlm_region_gate:
 
     # Maximum age of the latest pose message when publishing a goal.
     max_pose_age_s: 1.0
+
+    # Timestamped RGB-D/TF controls for map output mode.
+    max_source_age_s: 8.0
+    depth_sync_tolerance_s: 0.10
+    depth_history_size: 300
+    tf_timeout_s: 0.15

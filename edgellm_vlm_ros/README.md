@@ -5,6 +5,8 @@ ROS 2 package for running TensorRT Edge-LLM VLM inference on D435i RGB images an
 Implemented modes:
 
 - Point mode: VLM selects an RGB pixel. The gate uses D435i depth to publish a fixed-z `/move_base_simple/goal`.
+- Region mode: VLM selects a 3x3 image cell. The gate pairs it with aligned depth and
+  historical TF, then publishes a stable map-frame planner goal.
 - Primitive mode: VLM selects a short movement primitive such as `FORWARD`, `LEFT`, or `UP`.
 - Supervised mode: one VLM runtime switches between point prompts and altitude-primitive prompts.
 
@@ -14,7 +16,9 @@ The default drone pose source is PX4:
 /fmu/out/vehicle_local_position
 ```
 
-This topic is `px4_msgs/msg/VehicleLocalPosition` in NED. The gates convert it to the planner ENU `world` frame.
+This topic is `px4_msgs/msg/VehicleLocalPosition` in NED. Point and primitive gates produce
+body-relative `base_link` goals, which `relative_goal_to_map` composes with ENU odometry.
+Region mode instead uses the RGB timestamp and the TF history to publish directly in `map`.
 
 ## Build
 
@@ -92,6 +96,46 @@ To force one global z plane, set:
 ```yaml
 goal_z_mode: "fixed"
 fixed_goal_z_m: 1.0
+```
+
+## Region Mode
+
+Region mode keeps the paper's 3x3 cell decision while making the planner handoff
+timestamped and stateful:
+
+```bash
+ros2 launch edgellm_vlm_ros d435i_vlm.launch.py \
+  prompt_mode:=region \
+  enable_region_gate:=true \
+  region_gate_params_file:=$PWD/install/edgellm_vlm_ros/share/edgellm_vlm_ros/config/region_gate.yaml
+```
+
+For named-object navigation, omit that override (the launch default is the
+target preset) and pass `target_object:="orange trash bin"` or another target.
+
+The production path is:
+
+```text
+RGB cell + nearest aligned-depth frame
+  -> camera optical point
+  -> base_link at the RGB timestamp
+  -> map at the RGB timestamp
+  -> /move_base_simple/goal
+```
+
+The gate requires `consistency_required` consecutive decisions for the same
+cell. Once published, a goal remains active until `/planning/goal_status`
+reports `reached`, `rejected:*`, or `failed:*`, or until
+`safety_loss_required` depth checks mark the active cell unsafe. A candidate
+within `goal_update_min_distance_m` of the previous goal is suppressed.
+
+Inspect the arbitration state with:
+
+```bash
+ros2 topic echo /vlm_region_gate/proposal
+ros2 topic echo /vlm_region_gate/status
+ros2 topic echo /planning/goal_status
+ros2 topic echo /move_base_simple/goal
 ```
 
 ## Supervised Mode
@@ -175,6 +219,8 @@ Config files are split by node:
 src/edgellm_vlm_ros/config/vlm_node.yaml
 src/edgellm_vlm_ros/config/point_gate.yaml
 src/edgellm_vlm_ros/config/primitive_gate.yaml
+src/edgellm_vlm_ros/config/region_gate.yaml
+src/edgellm_vlm_ros/config/region_gate_pipeline.yaml
 src/edgellm_vlm_ros/config/nav_supervisor.yaml
 ```
 
@@ -185,6 +231,7 @@ ros2 launch edgellm_vlm_ros d435i_vlm.launch.py \
   vlm_params_file:=/path/to/vlm_node.yaml \
   point_gate_params_file:=/path/to/point_gate.yaml \
   primitive_gate_params_file:=/path/to/primitive_gate.yaml \
+  region_gate_params_file:=/path/to/region_gate.yaml \
   nav_supervisor_params_file:=/path/to/nav_supervisor.yaml
 ```
 
@@ -195,10 +242,22 @@ image_topic: "/camera/camera/color/image_raw"
 depth_topic: "/camera/camera/depth/image_rect_raw"
 depth_camera_info_topic: "/camera/camera/depth/camera_info"
 vehicle_local_position_topic: "/fmu/out/vehicle_local_position"
-goal_topic: "/move_base_simple/goal"
-goal_frame_id: "world"
+goal_topic: "/relative_goal"
+goal_frame_id: "base_link"
 prompt_mode: "point"
 auto_execute: false
+```
+
+Region production defaults override that common/legacy contract:
+
+```yaml
+depth_topic: "/camera/camera/aligned_depth_to_color/image_raw"
+goal_output_mode: "map"
+goal_topic: "/move_base_simple/goal"
+body_frame_id: "base_link"
+map_frame_id: "map"
+consistency_required: 3
+wait_for_planner_status: true
 ```
 
 Optional fallback pose sources are disabled by default:

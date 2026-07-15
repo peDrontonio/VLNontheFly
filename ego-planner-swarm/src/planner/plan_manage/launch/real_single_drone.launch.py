@@ -1,8 +1,10 @@
 import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -29,6 +31,18 @@ def generate_launch_description():
     """
 
     use_sim_time = LaunchConfiguration('use_sim_time')
+    goal_gate_markers_topic = LaunchConfiguration('goal_gate_markers_topic')
+    goal_gate_frame_id = LaunchConfiguration('goal_gate_frame_id')
+    goal_gate_z_min = LaunchConfiguration('goal_gate_z_min')
+    goal_gate_z_max = LaunchConfiguration('goal_gate_z_max')
+    use_tf_camera_pose = LaunchConfiguration('use_tf_camera_pose')
+    start_traj_server = LaunchConfiguration('start_traj_server')
+    planning_bspline_topic = LaunchConfiguration('planning_bspline_topic')
+    obstacles_inflation = LaunchConfiguration('obstacles_inflation')
+    depth_filter_top_margin = LaunchConfiguration('depth_filter_top_margin')
+    tf_lookup_timeout = LaunchConfiguration('tf_lookup_timeout')
+    optimization_dist0 = LaunchConfiguration('optimization_dist0')
+    optimization_lambda_collision = LaunchConfiguration('optimization_lambda_collision')
 
     odom_topic = '/odometry'
     depth_topic = '/camera/camera/depth/image_rect_raw'
@@ -60,9 +74,10 @@ def generate_launch_description():
             ('odom_world', odom_topic),
 
             # --- Planner outputs ---
-            ('planning/bspline', 'drone_' + drone_id + '_planning/bspline'),
+            ('planning/bspline', planning_bspline_topic),
             ('planning/data_display', 'drone_' + drone_id + '_planning/data_display'),
             ('planning/goal_status', 'drone_' + drone_id + '_planning/goal_status'),
+            ('goal_gate_markers', goal_gate_markers_topic),
             ('planning/broadcast_bspline_from_planner', '/broadcast_bspline'),
             ('planning/broadcast_bspline_to_planner', '/broadcast_bspline'),
 
@@ -76,6 +91,7 @@ def generate_launch_description():
             # --- Grid map sensor inputs ---
             ('grid_map/odom',  odom_topic),
             ('grid_map/depth', depth_topic),
+            ('grid_map/camera_info', '/camera/camera/depth/camera_info'),
 
             # --- Grid map output ---
             ('grid_map/occupancy_inflate',
@@ -94,7 +110,7 @@ def generate_launch_description():
             {'fsm/fail_safe': True},
 
             # ---- Goal gate (geofence on incoming goals: VLM, RViz, topic pub) ----
-            # All values in the planner world frame (= /odometry origin; with
+            # All values in the planner map frame (= /odometry origin; with
             # OptiTrack feeding the EKF this is the fixed OptiTrack origin).
             # Goals outside the box or inside a keep-out cylinder are rejected
             # and 'rejected:zone'/'rejected:keepout' is published on
@@ -106,12 +122,15 @@ def generate_launch_description():
             # corner reading pulled in 0.5 m for tracking overshoot + drone
             # radius.
             {'fsm/goal_gate_enable': True},
+            {'fsm/goal_gate_frame_id': goal_gate_frame_id},
             {'fsm/goal_gate_x_min': -5.85},
             {'fsm/goal_gate_x_max': 5.75},
             {'fsm/goal_gate_y_min': -5.05},
             {'fsm/goal_gate_y_max': 5.25},
-            {'fsm/goal_gate_z_min': 0.3},
-            {'fsm/goal_gate_z_max': 2.2},
+            # Keep the geofence slightly below the nominal z=0 floor so goals
+            # at the grounded vehicle's current altitude survive mocap/EKF noise.
+            {'fsm/goal_gate_z_min': ParameterValue(goal_gate_z_min, value_type=float)},
+            {'fsm/goal_gate_z_max': ParameterValue(goal_gate_z_max, value_type=float)},
             # Keep-out cylinders (full height), e.g. OptiTrack tripods.
             # Parallel arrays; radius should cover tripod legs + planner
             # inflation margin. Placeholder entry is inert (radius 0).
@@ -133,7 +152,8 @@ def generate_launch_description():
             {'grid_map/local_update_range_x': 5.5},
             {'grid_map/local_update_range_y': 5.5},
             {'grid_map/local_update_range_z': 4.5},
-            {'grid_map/obstacles_inflation': 0.25}, 
+            {'grid_map/obstacles_inflation': ParameterValue(
+                obstacles_inflation, value_type=float)},
             {'grid_map/local_map_margin': 10},
             {'grid_map/ground_height': -0.01},
 
@@ -149,7 +169,11 @@ def generate_launch_description():
             {'grid_map/depth_filter_maxdist': 4.0},
             {'grid_map/depth_filter_mindist': 0.2},
             {'grid_map/depth_filter_margin': 2},
-            {'grid_map/k_depth_scaling_factor': 1000.  0},
+            # The fixed mount sees a persistent self-return in RealSense rows
+            # 24..30. Crop only the top edge; retain the side/bottom FOV.
+            {'grid_map/depth_filter_top_margin': ParameterValue(
+                depth_filter_top_margin, value_type=int)},
+            {'grid_map/k_depth_scaling_factor': 1000.0},
             {'grid_map/skip_pixel': 2},
 
             # Occupancy probabilities
@@ -166,8 +190,15 @@ def generate_launch_description():
             {'grid_map/visualization_truncate_height': 2.2},
             {'grid_map/show_occ_time': False},
 
-            # pose_type=2 (ODOMETRY): syncs depth with nav_msgs/Odometry
+            # Retained only as the fallback when TF camera projection is disabled.
             {'grid_map/pose_type': 2},
+
+            # Production camera pose: resolve map <- depth optical directly at
+            # the depth measurement stamp. Never compose with latest odometry.
+            {'grid_map/use_tf_camera_pose': ParameterValue(
+                use_tf_camera_pose, value_type=bool)},
+            {'grid_map/tf_lookup_timeout': ParameterValue(
+                tf_lookup_timeout, value_type=float)},
 
             {'grid_map/frame_id': 'map'},
             {'grid_map/odom_depth_timeout': 3.0},  # tolerant for real HW
@@ -184,10 +215,11 @@ def generate_launch_description():
 
             # ---- Trajectory Optimization ----
             {'optimization/lambda_smooth': 1.0},
-            {'optimization/lambda_collision': 0.5},
+            {'optimization/lambda_collision': ParameterValue(
+                optimization_lambda_collision, value_type=float)},
             {'optimization/lambda_feasibility': 0.1},
             {'optimization/lambda_fitness': 1.0},
-            {'optimization/dist0': 0.5},
+            {'optimization/dist0': ParameterValue(optimization_dist0, value_type=float)},
             {'optimization/swarm_clearance': 0.5},
             {'optimization/max_vel': max_vel},
             {'optimization/max_acc': max_acc},
@@ -211,13 +243,14 @@ def generate_launch_description():
         output='screen',
         remappings=[
             ('position_cmd', 'drone_' + drone_id + '_planning/pos_cmd'),
-            ('planning/bspline', 'drone_' + drone_id + '_planning/bspline'),
+            ('planning/bspline', planning_bspline_topic),
         ],
         parameters=[
             {'use_sim_time': use_sim_time},
             {'traj_server/time_forward': 1.0},
             {'traj_server/max_yaw_rate': max_yaw_rate}
-        ]
+        ],
+        condition=IfCondition(start_traj_server),
     )
 
     # Build launch description
@@ -225,6 +258,43 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument(
         'use_sim_time', default_value='false',
         description='Use /clock (bag replay) instead of wall time.'))
+    ld.add_action(DeclareLaunchArgument(
+        'goal_gate_markers_topic', default_value='/drone_0_plan_vis/goal_gate',
+        description='MarkerArray topic for the allowed goal volume and keep-out cylinders.'))
+    ld.add_action(DeclareLaunchArgument(
+        'goal_gate_frame_id', default_value='map',
+        description='Fixed planner-world frame used by both the goal gate and its markers.'))
+    ld.add_action(DeclareLaunchArgument(
+        'goal_gate_z_min', default_value='-0.2',
+        description='Lowest accepted goal altitude in map coordinates [m]. The default '
+                    'includes the nominal z=0 floor plus localization noise.'))
+    ld.add_action(DeclareLaunchArgument(
+        'goal_gate_z_max', default_value='4.0',
+        description='Highest accepted goal altitude in map coordinates [m].'))
+    ld.add_action(DeclareLaunchArgument(
+        'use_tf_camera_pose', default_value='true',
+        description='Use synchronized CameraInfo and timestamped TF for depth projection.'))
+    ld.add_action(DeclareLaunchArgument(
+        'start_traj_server', default_value='true',
+        description='Start the B-spline to position-command server. Disable for isolated sweeps.'))
+    ld.add_action(DeclareLaunchArgument(
+        'planning_bspline_topic', default_value='/drone_0_planning/bspline',
+        description='Planner B-spline output; use an isolated topic for non-actuating sweeps.'))
+    ld.add_action(DeclareLaunchArgument(
+        'obstacles_inflation', default_value='0.20',
+        description='Occupied-voxel inflation radius [m]. At 0.1 m resolution this is 2 voxels.'))
+    ld.add_action(DeclareLaunchArgument(
+        'depth_filter_top_margin', default_value='32',
+        description='Depth rows cropped only from the top to mask the fixed airframe return.'))
+    ld.add_action(DeclareLaunchArgument(
+        'tf_lookup_timeout', default_value='0.15',
+        description='Maximum wait for timestamped map-to-camera TF [s].'))
+    ld.add_action(DeclareLaunchArgument(
+        'optimization_dist0', default_value='0.40',
+        description='Optimizer clearance distance from inflated occupancy [m].'))
+    ld.add_action(DeclareLaunchArgument(
+        'optimization_lambda_collision', default_value='0.5',
+        description='Collision cost weight for trajectory optimization.'))
     ld.add_action(ego_planner_node)
     ld.add_action(traj_server_node)
 

@@ -1,7 +1,11 @@
 // OptiTrack -> PX4 visual-odometry bridge.
 //
-// Subscribes geometry_msgs/PoseStamped on (default) /drone/pose published by
-// a VRPN/OptiTrack driver.  Conventions for THIS setup:
+// Subscribes to the tracked rigid-body pose on (default) /drone/pose, published
+// by the NatNet/OptiTrack driver. The PoseStamped header names the OptiTrack
+// reference frame. The Motive asset is deliberately NOT named base_link, so the
+// driver's TF (map -> drone) cannot collide with the odometry converter's
+// map -> base_link.
+// Conventions for THIS setup:
 //   * World frame: X-left, Y-back, Z-up (right-handed, Z-up). The absolute
 //     direction of world X/Y is irrelevant because we anchor a local NED frame
 //     on the first message (see below); only "Z is up" and right-handedness

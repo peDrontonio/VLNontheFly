@@ -22,6 +22,8 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(message_filters REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -29,6 +31,7 @@ find_package(PCL REQUIRED)
 find_package(pcl_conversions REQUIRED)
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
@@ -38,6 +41,12 @@ if(BUILD_TESTING)
   # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  ament_add_gtest(test_depth_projection test/test_depth_projection.cpp)
+  if(TARGET test_depth_projection)
+    target_include_directories(test_depth_projection PRIVATE include ${Eigen3_INCLUDE_DIRS})
+    ament_target_dependencies(test_depth_projection Eigen3 geometry_msgs rclcpp tf2_ros)
+  endif()
 endif()
 
 include_directories( 
@@ -51,6 +60,7 @@ include_directories(
 link_directories(${PCL_LIBRARY_DIRS})
 
 ament_export_include_directories(include)
+ament_export_dependencies(tf2 tf2_ros)
 
 add_library( plan_env SHARED
     src/grid_map.cpp 
@@ -58,7 +68,11 @@ add_library( plan_env SHARED
     src/obj_predictor.cpp 
     )
 
-ament_target_dependencies(plan_env std_msgs visualization_msgs geometry_msgs nav_msgs rclcpp Eigen3 PCL cv_bridge message_filters pcl_conversions)
+ament_target_dependencies(
+  plan_env
+  std_msgs visualization_msgs geometry_msgs nav_msgs rclcpp Eigen3 PCL cv_bridge
+  message_filters pcl_conversions tf2 tf2_ros
+)
 
 target_link_libraries( plan_env 
   ${PCL_LIBRARIES}

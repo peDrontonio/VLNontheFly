@@ -5,11 +5,13 @@
 #include <Eigen/StdVector>
 #include <cv_bridge/cv_bridge.h>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <iostream>
 #include <random>
 #include <nav_msgs/msg/odometry.hpp>
 #include <queue>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
 #include <tuple>
 #include <visualization_msgs/msg/marker.hpp>
 
@@ -21,6 +23,9 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/time_synchronizer.h>
+
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 
 #include <plan_env/raycast.h>
 
@@ -58,6 +63,8 @@ struct MappingParameters
   double obstacles_inflation_;
   string frame_id_;
   int pose_type_;
+  bool use_tf_camera_pose_;
+  double tf_lookup_timeout_;
 
   /* camera parameters */
   double cx_, cy_, fx_, fy_;
@@ -67,7 +74,7 @@ struct MappingParameters
 
   /* depth image projection filtering */
   double depth_filter_maxdist_, depth_filter_mindist_, depth_filter_tolerance_;
-  int depth_filter_margin_;
+  int depth_filter_margin_, depth_filter_top_margin_;
   bool use_depth_filter_;
   double k_depth_scaling_factor_;
   int skip_pixel_;
@@ -208,6 +215,8 @@ private:
                          const geometry_msgs::msg::PoseStamped::ConstPtr &pose);
   void extrinsicCallback(const nav_msgs::msg::Odometry::ConstPtr &odom);
   void depthOdomCallback(const sensor_msgs::msg::Image::ConstPtr &img, const nav_msgs::msg::Odometry::ConstPtr &odom);
+  void depthTfCallback(const sensor_msgs::msg::Image::ConstPtr &img,
+                       const sensor_msgs::msg::CameraInfo::ConstPtr &camera_info);
   void cloudCallback(const sensor_msgs::msg::PointCloud2::ConstPtr &img);
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr odom);
 
@@ -232,15 +241,24 @@ private:
       SyncPolicyImageOdom;
   typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, geometry_msgs::msg::PoseStamped>
       SyncPolicyImagePose;
+  typedef message_filters::sync_policies::ExactTime<sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo>
+      SyncPolicyImageCameraInfo;
   typedef shared_ptr<message_filters::Synchronizer<SyncPolicyImagePose>> SynchronizerImagePose;
   typedef shared_ptr<message_filters::Synchronizer<SyncPolicyImageOdom>> SynchronizerImageOdom;
+  typedef shared_ptr<message_filters::Synchronizer<SyncPolicyImageCameraInfo>> SynchronizerImageCameraInfo;
 
   rclcpp::Node::SharedPtr node_;
   std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> depth_sub_;
   std::shared_ptr<message_filters::Subscriber<geometry_msgs::msg::PoseStamped>> pose_sub_;
   std::shared_ptr<message_filters::Subscriber<nav_msgs::msg::Odometry>> odom_sub_;
+  std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::CameraInfo>> camera_info_sub_;
   SynchronizerImagePose sync_image_pose_;
   SynchronizerImageOdom sync_image_odom_;
+  SynchronizerImageCameraInfo sync_image_camera_info_;
+
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  bool camera_info_logged_ = false;
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr indep_cloud_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr indep_odom_sub_;

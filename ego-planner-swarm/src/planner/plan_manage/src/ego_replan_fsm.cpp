@@ -34,6 +34,7 @@ namespace ego_planner
 
     /* goal gate: world-frame geofence for external goal sources (VLM / RViz) */
     node_->declare_parameter("fsm/goal_gate_enable", false);
+    node_->declare_parameter("fsm/goal_gate_frame_id", "map");
     node_->declare_parameter("fsm/goal_gate_x_min", -1.0e4);
     node_->declare_parameter("fsm/goal_gate_x_max", 1.0e4);
     node_->declare_parameter("fsm/goal_gate_y_min", -1.0e4);
@@ -45,6 +46,7 @@ namespace ego_planner
     node_->declare_parameter("fsm/keepout_radius", std::vector<double>{});
 
     node_->get_parameter("fsm/goal_gate_enable", goal_gate_enable_);
+    node_->get_parameter("fsm/goal_gate_frame_id", goal_gate_frame_id_);
     node_->get_parameter("fsm/goal_gate_x_min", gate_x_min_);
     node_->get_parameter("fsm/goal_gate_x_max", gate_x_max_);
     node_->get_parameter("fsm/goal_gate_y_min", gate_y_min_);
@@ -150,6 +152,9 @@ namespace ego_planner
 
     bspline_pub_ = node_->create_publisher<traj_utils::msg::Bspline>("planning/bspline", 10);
     goal_status_pub_ = node_->create_publisher<std_msgs::msg::String>("planning/goal_status", 10);
+    goal_gate_markers_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
+        "goal_gate_markers", rclcpp::QoS(1).reliable().transient_local());
+    publishGoalGateMarkers();
     data_disp_pub_ = node_->create_publisher<traj_utils::msg::DataDisp>("planning/data_display", 100);
 
     if (target_type_ == TARGET_TYPE::MANUAL_TARGET)
@@ -250,14 +255,22 @@ namespace ego_planner
       /*** FSM状态转换 ***/
       if (exec_state_ == WAIT_TARGET)
         changeFSMExecState(GEN_NEW_TRAJ, "TRIG");
+      else if (exec_state_ == EXEC_TRAJ)
+      {
+        changeFSMExecState(REPLAN_TRAJ, "TRIG");
+      }
       else
       {
-        while (exec_state_ != EXEC_TRAJ)
-        {
-          rclcpp::spin_some(node_);
-          std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        changeFSMExecState(REPLAN_TRAJ, "TRIG");
+        // Never recursively spin this node from a subscription callback. Doing
+        // so throws "node has already been added to an executor" in ROS 2.
+        RCLCPP_ERROR(node_->get_logger(),
+                     "Planned goal while FSM was not ready (state=%d); discarding target",
+                     static_cast<int>(exec_state_));
+        have_target_ = false;
+        have_new_target_ = false;
+        if (target_type_ == TARGET_TYPE::MANUAL_TARGET)
+          pubGoalStatus("rejected:not_ready");
+        return;
       }
 
       visualization_->displayGlobalPathList(gloabl_traj, 0.1, 0);
@@ -304,6 +317,126 @@ namespace ego_planner
     goal_status_pub_->publish(msg);
   }
 
+  void EGOReplanFSM::publishGoalGateMarkers()
+  {
+    visualization_msgs::msg::MarkerArray markers;
+
+    visualization_msgs::msg::Marker clear;
+    clear.action = visualization_msgs::msg::Marker::DELETEALL;
+    markers.markers.push_back(clear);
+
+    if (!goal_gate_enable_)
+    {
+      goal_gate_markers_pub_->publish(markers);
+      return;
+    }
+
+    const auto stamp = node_->get_clock()->now();
+    const double size_x = gate_x_max_ - gate_x_min_;
+    const double size_y = gate_y_max_ - gate_y_min_;
+    const double size_z = gate_z_max_ - gate_z_min_;
+
+    if (size_x <= 0.0 || size_y <= 0.0 || size_z <= 0.0)
+    {
+      RCLCPP_ERROR(node_->get_logger(),
+                   "Cannot visualize goal gate: invalid box dimensions (%.2f, %.2f, %.2f)",
+                   size_x, size_y, size_z);
+      goal_gate_markers_pub_->publish(markers);
+      return;
+    }
+
+    visualization_msgs::msg::Marker volume;
+    volume.header.frame_id = goal_gate_frame_id_;
+    volume.header.stamp = stamp;
+    volume.ns = "goal_gate_allowed_volume";
+    volume.id = 0;
+    volume.type = visualization_msgs::msg::Marker::CUBE;
+    volume.action = visualization_msgs::msg::Marker::ADD;
+    volume.pose.position.x = 0.5 * (gate_x_min_ + gate_x_max_);
+    volume.pose.position.y = 0.5 * (gate_y_min_ + gate_y_max_);
+    volume.pose.position.z = 0.5 * (gate_z_min_ + gate_z_max_);
+    volume.pose.orientation.w = 1.0;
+    volume.scale.x = size_x;
+    volume.scale.y = size_y;
+    volume.scale.z = size_z;
+    volume.color.r = 0.1f;
+    volume.color.g = 0.9f;
+    volume.color.b = 0.2f;
+    volume.color.a = 0.08f;
+    markers.markers.push_back(volume);
+
+    visualization_msgs::msg::Marker outline;
+    outline.header = volume.header;
+    outline.ns = "goal_gate_allowed_outline";
+    outline.id = 0;
+    outline.type = visualization_msgs::msg::Marker::LINE_LIST;
+    outline.action = visualization_msgs::msg::Marker::ADD;
+    outline.pose.orientation.w = 1.0;
+    outline.scale.x = 0.04;
+    outline.color.r = 0.1f;
+    outline.color.g = 1.0f;
+    outline.color.b = 0.2f;
+    outline.color.a = 0.9f;
+
+    const auto point = [](double x, double y, double z)
+    {
+      geometry_msgs::msg::Point p;
+      p.x = x;
+      p.y = y;
+      p.z = z;
+      return p;
+    };
+    const geometry_msgs::msg::Point corners[8] = {
+        point(gate_x_min_, gate_y_min_, gate_z_min_),
+        point(gate_x_max_, gate_y_min_, gate_z_min_),
+        point(gate_x_max_, gate_y_max_, gate_z_min_),
+        point(gate_x_min_, gate_y_max_, gate_z_min_),
+        point(gate_x_min_, gate_y_min_, gate_z_max_),
+        point(gate_x_max_, gate_y_min_, gate_z_max_),
+        point(gate_x_max_, gate_y_max_, gate_z_max_),
+        point(gate_x_min_, gate_y_max_, gate_z_max_)};
+    const int edges[12][2] = {
+        {0, 1}, {1, 2}, {2, 3}, {3, 0},
+        {4, 5}, {5, 6}, {6, 7}, {7, 4},
+        {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+    for (const auto &edge : edges)
+    {
+      outline.points.push_back(corners[edge[0]]);
+      outline.points.push_back(corners[edge[1]]);
+    }
+    markers.markers.push_back(outline);
+
+    for (size_t i = 0; i < keepout_r_.size(); ++i)
+    {
+      if (keepout_r_[i] <= 0.0)
+        continue;
+
+      visualization_msgs::msg::Marker keepout;
+      keepout.header = volume.header;
+      keepout.ns = "goal_gate_keepouts";
+      keepout.id = static_cast<int>(i);
+      keepout.type = visualization_msgs::msg::Marker::CYLINDER;
+      keepout.action = visualization_msgs::msg::Marker::ADD;
+      keepout.pose.position.x = keepout_x_[i];
+      keepout.pose.position.y = keepout_y_[i];
+      keepout.pose.position.z = 0.5 * (gate_z_min_ + gate_z_max_);
+      keepout.pose.orientation.w = 1.0;
+      keepout.scale.x = 2.0 * keepout_r_[i];
+      keepout.scale.y = 2.0 * keepout_r_[i];
+      keepout.scale.z = size_z;
+      keepout.color.r = 1.0f;
+      keepout.color.g = 0.1f;
+      keepout.color.b = 0.1f;
+      keepout.color.a = 0.3f;
+      markers.markers.push_back(keepout);
+    }
+
+    goal_gate_markers_pub_->publish(markers);
+    RCLCPP_INFO(node_->get_logger(),
+                "Published goal gate visualization in frame '%s' (%zu marker(s))",
+                goal_gate_frame_id_.c_str(), markers.markers.size() - 1);
+  }
+
   void EGOReplanFSM::triggerCallback(const std::shared_ptr<const geometry_msgs::msg::PoseStamped> &msg)
   {
     have_trigger_ = true;
@@ -326,6 +459,22 @@ namespace ego_planner
       RCLCPP_ERROR(node_->get_logger(), "Goal (%.2f, %.2f, %.2f) rejected by safety bubble: %s",
                    end_wp(0), end_wp(1), end_wp(2), reason.c_str());
       pubGoalStatus("rejected:" + reason);
+      return;
+    }
+
+    // A goal cannot be planned without a valid start state. Also reject goals
+    // while the FSM is already generating/replanning a trajectory instead of
+    // blocking or recursively spinning the node from this callback.
+    const bool state_accepts_goal =
+        exec_state_ == WAIT_TARGET || exec_state_ == EXEC_TRAJ;
+    if (!have_odom_ || !state_accepts_goal)
+    {
+      RCLCPP_WARN(node_->get_logger(),
+                  "Goal (%.2f, %.2f, %.2f) rejected: planner not ready "
+                  "(have_odom=%s, state=%d)",
+                  end_wp(0), end_wp(1), end_wp(2), have_odom_ ? "true" : "false",
+                  static_cast<int>(exec_state_));
+      pubGoalStatus("rejected:not_ready");
       return;
     }
 

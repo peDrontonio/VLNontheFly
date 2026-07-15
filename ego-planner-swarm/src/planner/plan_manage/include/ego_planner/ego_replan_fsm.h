@@ -12,6 +12,7 @@
 #include "std_msgs/msg/string.hpp"
 #include <vector>
 #include "visualization_msgs/msg/marker.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
 
 #include "bspline_opt/bspline_optimizer.h"
 #include "plan_env/grid_map.h"
@@ -67,6 +68,7 @@ namespace ego_planner
 
     /* goal gate: world-frame geofence applied to incoming goals (VLM or RViz) */
     bool goal_gate_enable_;
+    std::string goal_gate_frame_id_;
     double gate_x_min_, gate_x_max_, gate_y_min_, gate_y_max_, gate_z_min_, gate_z_max_;
     std::vector<double> keepout_x_, keepout_y_, keepout_r_; // vertical cylinders
 
@@ -103,6 +105,7 @@ namespace ego_planner
     rclcpp::Publisher<traj_utils::msg::MultiBsplines>::SharedPtr swarm_trajs_pub_;
     rclcpp::Publisher<traj_utils::msg::Bspline>::SharedPtr broadcast_bspline_pub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr goal_status_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr goal_gate_markers_pub_;
 
     /* helper functions */
     bool callReboundReplan(bool flag_use_poly_init, bool flag_randomPolyTraj); // front-end and back-end method
@@ -119,6 +122,7 @@ namespace ego_planner
     void planNextWaypoint(const Eigen::Vector3d next_wp);
     bool goalAllowed(const Eigen::Vector3d &wp, std::string &reason);
     void pubGoalStatus(const std::string &status);
+    void publishGoalGateMarkers();
     void getLocalTarget();
 
     /* ROS functions */

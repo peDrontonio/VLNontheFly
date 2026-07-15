@@ -1,5 +1,11 @@
 #include "plan_env/grid_map.h"
 
+#include <cmath>
+
+#include <tf2/exceptions.h>
+
+#include "plan_env/depth_projection.h"
+
 // #define current_img_ md_.depth_image_[image_cnt_ & 1]
 // #define last_img_ md_.depth_image_[!(image_cnt_ & 1)]
 
@@ -26,6 +32,7 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   node_->declare_parameter("grid_map/depth_filter_maxdist", -1.0);
   node_->declare_parameter("grid_map/depth_filter_mindist", -1.0);
   node_->declare_parameter("grid_map/depth_filter_margin", -1);
+  node_->declare_parameter("grid_map/depth_filter_top_margin", -1);
   node_->declare_parameter("grid_map/k_depth_scaling_factor", -1.0);
   node_->declare_parameter("grid_map/skip_pixel", -1);
   node_->declare_parameter("grid_map/p_hit", 0.70);
@@ -42,6 +49,8 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   node_->declare_parameter("grid_map/show_occ_time", false);
   node_->declare_parameter("grid_map/pose_type", 1);
   node_->declare_parameter("grid_map/frame_id", "map");
+  node_->declare_parameter("grid_map/use_tf_camera_pose", false);
+  node_->declare_parameter("grid_map/tf_lookup_timeout", 0.05);
   node_->declare_parameter("grid_map/local_map_margin", 1);
   node_->declare_parameter("grid_map/ground_height", 1.0);
   node_->declare_parameter("grid_map/odom_depth_timeout", 1.0);
@@ -63,6 +72,11 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   node_->get_parameter("grid_map/depth_filter_maxdist", mp_.depth_filter_maxdist_);
   node_->get_parameter("grid_map/depth_filter_mindist", mp_.depth_filter_mindist_);
   node_->get_parameter("grid_map/depth_filter_margin", mp_.depth_filter_margin_);
+  node_->get_parameter("grid_map/depth_filter_top_margin", mp_.depth_filter_top_margin_);
+  if (mp_.depth_filter_top_margin_ < 0)
+  {
+    mp_.depth_filter_top_margin_ = mp_.depth_filter_margin_;
+  }
   node_->get_parameter("grid_map/k_depth_scaling_factor", mp_.k_depth_scaling_factor_);
   node_->get_parameter("grid_map/skip_pixel", mp_.skip_pixel_);
   node_->get_parameter("grid_map/p_hit", mp_.p_hit_);
@@ -79,6 +93,8 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   node_->get_parameter("grid_map/show_occ_time", mp_.show_occ_time_);
   node_->get_parameter("grid_map/pose_type", mp_.pose_type_);
   node_->get_parameter("grid_map/frame_id", mp_.frame_id_);
+  node_->get_parameter("grid_map/use_tf_camera_pose", mp_.use_tf_camera_pose_);
+  node_->get_parameter("grid_map/tf_lookup_timeout", mp_.tf_lookup_timeout_);
   node_->get_parameter("grid_map/local_map_margin", mp_.local_map_margin_);
   node_->get_parameter("grid_map/ground_height", mp_.ground_height_);
   node_->get_parameter("grid_map/odom_depth_timeout", mp_.odom_depth_timeout_);
@@ -125,7 +141,7 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
 
   md_.raycast_num_ = 0;
 
-  md_.proj_points_.resize(640 * 480 / mp_.skip_pixel_ / mp_.skip_pixel_);
+  md_.proj_points_.resize(plan_env::projectionCapacity(480, 640, mp_.skip_pixel_));
   md_.proj_points_cnt = 0;
 
   md_.cam2body_ << 0.0, 0.0, 1.0, 0.0,
@@ -143,7 +159,20 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
       "/vins_estimator/extrinsic", 10,
       std::bind(&GridMap::extrinsicCallback, this, std::placeholders::_1));
 
-  if (mp_.pose_type_ == POSE_STAMPED)
+  if (mp_.use_tf_camera_pose_)
+  {
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_, node_, true);
+
+    camera_info_sub_ = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::CameraInfo>>(
+        node_, "grid_map/camera_info", rclcpp::QoS(50).get_rmw_qos_profile());
+    sync_image_camera_info_ =
+        std::make_shared<message_filters::Synchronizer<SyncPolicyImageCameraInfo>>(
+            SyncPolicyImageCameraInfo(50), *depth_sub_, *camera_info_sub_);
+    sync_image_camera_info_->registerCallback(
+        std::bind(&GridMap::depthTfCallback, this, std::placeholders::_1, std::placeholders::_2));
+  }
+  else if (mp_.pose_type_ == POSE_STAMPED)
   {
     pose_sub_ = std::make_shared<message_filters::Subscriber<geometry_msgs::msg::PoseStamped>>(
         node_, "grid_map/pose", rclcpp::QoS(25).get_rmw_qos_profile());
@@ -271,6 +300,7 @@ void GridMap::projectDepthImage()
   double depth;
 
   Eigen::Matrix3d camera_r = md_.camera_r_m_;
+  const plan_env::PinholeIntrinsics intrinsics{mp_.fx_, mp_.fy_, mp_.cx_, mp_.cy_};
 
   if (!mp_.use_depth_filter_)
   {
@@ -282,12 +312,9 @@ void GridMap::projectDepthImage()
       {
 
         Eigen::Vector3d proj_pt;
-        depth = (*row_ptr++) / mp_.k_depth_scaling_factor_;
-        proj_pt(0) = (u - mp_.cx_) * depth / mp_.fx_;
-        proj_pt(1) = (v - mp_.cy_) * depth / mp_.fy_;
-        proj_pt(2) = depth;
-
-        proj_pt = camera_r * proj_pt + md_.camera_pos_;
+        depth = row_ptr[u] / mp_.k_depth_scaling_factor_;
+        proj_pt = plan_env::projectPixel(
+            u, v, depth, intrinsics, camera_r, md_.camera_pos_);
 
         if (u == 320 && v == 240)
           std::cout << "depth: " << depth << std::endl;
@@ -309,40 +336,36 @@ void GridMap::projectDepthImage()
       last_camera_r_inv = md_.last_camera_r_m_.inverse();
       const double inv_factor = 1.0 / mp_.k_depth_scaling_factor_;
 
-      for (int v = mp_.depth_filter_margin_; v < rows - mp_.depth_filter_margin_; v += mp_.skip_pixel_)
+      for (int v = mp_.depth_filter_top_margin_; v < rows - mp_.depth_filter_margin_;
+           v += mp_.skip_pixel_)
       {
-        row_ptr = md_.depth_image_.ptr<uint16_t>(v) + mp_.depth_filter_margin_;
+        row_ptr = md_.depth_image_.ptr<uint16_t>(v);
 
         for (int u = mp_.depth_filter_margin_; u < cols - mp_.depth_filter_margin_;
              u += mp_.skip_pixel_)
         {
 
-          depth = (*row_ptr) * inv_factor;
-          row_ptr = row_ptr + mp_.skip_pixel_;
+          const uint16_t raw_depth = row_ptr[u];
 
           // filter depth
           // depth += rand_noise_(eng_);
           // if (depth > 0.01) depth += rand_noise2_(eng_);
 
-          if (*row_ptr == 0)
-          {
-            depth = mp_.max_ray_length_ + 0.1;
-          }
-          else if (depth < mp_.depth_filter_mindist_)
+          const auto filtered_depth = plan_env::depthForRaycast(
+              raw_depth, inv_factor, mp_.depth_filter_mindist_,
+              mp_.depth_filter_maxdist_, mp_.max_ray_length_);
+          if (!filtered_depth.has_value())
           {
             continue;
           }
-          else if (depth > mp_.depth_filter_maxdist_)
-          {
-            depth = mp_.max_ray_length_ + 0.1;
-          }
+          depth = *filtered_depth;
 
           // project to world frame
           pt_cur(0) = (u - mp_.cx_) * depth / mp_.fx_;
           pt_cur(1) = (v - mp_.cy_) * depth / mp_.fy_;
           pt_cur(2) = depth;
-
-          pt_world = camera_r * pt_cur + md_.camera_pos_;
+          pt_world = plan_env::projectPixel(
+              u, v, depth, intrinsics, camera_r, md_.camera_pos_);
           // if (!isInMap(pt_world)) {
           //   pt_world = closetPointInMap(pt_world, md_.camera_pos_);
           // }
@@ -793,6 +816,12 @@ void GridMap::depthPoseCallback(const sensor_msgs::msg::Image::ConstPtr &img,
 
 void GridMap::odomCallback(const nav_msgs::msg::Odometry::SharedPtr odom)
 {
+  if (mp_.use_tf_camera_pose_)
+  {
+    md_.has_odom_ = true;
+    return;
+  }
+
   if (md_.has_first_depth_)
     return;
 
@@ -1040,6 +1069,127 @@ void GridMap::extrinsicCallback(const nav_msgs::msg::Odometry::ConstPtr &odom)
   md_.cam2body_(1, 3) = odom->pose.pose.position.y;
   md_.cam2body_(2, 3) = odom->pose.pose.position.z;
   md_.cam2body_(3, 3) = 1.0;
+}
+
+void GridMap::depthTfCallback(
+    const sensor_msgs::msg::Image::ConstPtr &img,
+    const sensor_msgs::msg::CameraInfo::ConstPtr &camera_info)
+{
+  if (img->header.frame_id.empty() || camera_info->header.frame_id.empty())
+  {
+    RCLCPP_ERROR_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 2000,
+        "Rejecting depth frame: depth or CameraInfo frame_id is empty");
+    return;
+  }
+  if (img->header.frame_id != camera_info->header.frame_id)
+  {
+    RCLCPP_ERROR_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 2000,
+        "Rejecting depth frame: image frame '%s' != CameraInfo frame '%s'",
+        img->header.frame_id.c_str(), camera_info->header.frame_id.c_str());
+    return;
+  }
+  if (img->width != camera_info->width || img->height != camera_info->height)
+  {
+    RCLCPP_ERROR_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 2000,
+        "Rejecting depth frame: image is %ux%u but CameraInfo is %ux%u",
+        img->width, img->height, camera_info->width, camera_info->height);
+    return;
+  }
+
+  const double live_fx = camera_info->k[0];
+  const double live_fy = camera_info->k[4];
+  const double live_cx = camera_info->k[2];
+  const double live_cy = camera_info->k[5];
+  if (!std::isfinite(live_fx) || !std::isfinite(live_fy) ||
+      !std::isfinite(live_cx) || !std::isfinite(live_cy) ||
+      live_fx <= 0.0 || live_fy <= 0.0)
+  {
+    RCLCPP_ERROR_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 2000,
+        "Rejecting depth frame: CameraInfo intrinsics are invalid");
+    return;
+  }
+
+  if (!camera_info_logged_)
+  {
+    RCLCPP_INFO(
+        node_->get_logger(),
+        "Depth intrinsics configured=[fx %.6f fy %.6f cx %.6f cy %.6f] "
+        "live=[fx %.6f fy %.6f cx %.6f cy %.6f] delta=[%.6f %.6f %.6f %.6f]",
+        mp_.fx_, mp_.fy_, mp_.cx_, mp_.cy_, live_fx, live_fy, live_cx, live_cy,
+        live_fx - mp_.fx_, live_fy - mp_.fy_, live_cx - mp_.cx_, live_cy - mp_.cy_);
+    camera_info_logged_ = true;
+  }
+
+  geometry_msgs::msg::TransformStamped map_from_depth;
+  try
+  {
+    map_from_depth = tf_buffer_->lookupTransform(
+        mp_.frame_id_, img->header.frame_id, rclcpp::Time(img->header.stamp),
+        rclcpp::Duration::from_seconds(mp_.tf_lookup_timeout_));
+  }
+  catch (const tf2::TransformException &ex)
+  {
+    RCLCPP_WARN_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 2000,
+        "Dropping depth frame: no timestamped TF %s <- %s: %s",
+        mp_.frame_id_.c_str(), img->header.frame_id.c_str(), ex.what());
+    return;
+  }
+
+  const auto &translation = map_from_depth.transform.translation;
+  const auto &rotation = map_from_depth.transform.rotation;
+  Eigen::Quaterniond map_from_depth_q(rotation.w, rotation.x, rotation.y, rotation.z);
+  if (!std::isfinite(map_from_depth_q.norm()) || map_from_depth_q.norm() < 1e-9)
+  {
+    RCLCPP_ERROR_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 2000,
+        "Rejecting depth frame: timestamped TF quaternion is invalid");
+    return;
+  }
+  map_from_depth_q.normalize();
+  md_.camera_r_m_ = map_from_depth_q.toRotationMatrix();
+  md_.camera_pos_ = Eigen::Vector3d(translation.x, translation.y, translation.z);
+
+  cv_bridge::CvImagePtr cv_ptr;
+  try
+  {
+    cv_ptr = cv_bridge::toCvCopy(img, img->encoding);
+  }
+  catch (const cv_bridge::Exception &ex)
+  {
+    RCLCPP_ERROR_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 2000,
+        "Rejecting depth frame: cv_bridge conversion failed: %s", ex.what());
+    return;
+  }
+  if (img->encoding == sensor_msgs::image_encodings::TYPE_32FC1)
+  {
+    cv_ptr->image.convertTo(cv_ptr->image, CV_16UC1, mp_.k_depth_scaling_factor_);
+  }
+  else if (img->encoding != sensor_msgs::image_encodings::TYPE_16UC1 &&
+           img->encoding != sensor_msgs::image_encodings::MONO16)
+  {
+    RCLCPP_ERROR_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 2000,
+        "Rejecting depth frame: unsupported encoding '%s'", img->encoding.c_str());
+    return;
+  }
+  cv_ptr->image.copyTo(md_.depth_image_);
+
+  mp_.fx_ = live_fx;
+  mp_.fy_ = live_fy;
+  mp_.cx_ = live_cx;
+  mp_.cy_ = live_cy;
+  md_.proj_points_.resize(plan_env::projectionCapacity(
+      md_.depth_image_.rows, md_.depth_image_.cols, mp_.skip_pixel_));
+
+  md_.has_odom_ = true;
+  md_.occ_need_update_ = true;
+  md_.flag_use_depth_fusion = true;
 }
 
 void GridMap::depthOdomCallback(const sensor_msgs::msg::Image::ConstPtr &img,
