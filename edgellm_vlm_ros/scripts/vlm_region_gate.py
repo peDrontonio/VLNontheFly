@@ -181,7 +181,11 @@ def parse_region_result(payload: str, known: List[str]) -> RegionProposal:
     if isinstance(outer, dict) and "text" in outer:
         text = str(outer["text"])
         try:
-            source_stamp_s = float(outer["stamp"]) if "stamp" in outer else None
+            if "stamp_sec" in outer and "stamp_nanosec" in outer:
+                source_stamp_s = float(outer["stamp_sec"]) \
+                    + float(outer["stamp_nanosec"]) / 1e9
+            else:
+                source_stamp_s = float(outer["stamp"]) if "stamp" in outer else None
         except (TypeError, ValueError):
             source_stamp_s = None
         source_frame_id = str(outer.get("frame_id", ""))
@@ -461,7 +465,7 @@ class VlmRegionGate(Node):
             "used_fallback": decision.used_fallback,
             "confidence": decision.confidence,
             "consistency_count": self.consensus.count,
-            "consistency_required": self.consistency.required,
+            "consistency_required": self.consensus.required,
             "active_region": self.active_region,
             "waiting_for_planner": self.active_goal is not None,
         }

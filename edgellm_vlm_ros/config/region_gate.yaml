@@ -71,13 +71,13 @@ vlm_region_gate:
     depth_scale_m: 0.001
 
     # Minimum valid depth accepted within a region.
-    min_depth_m: 0.25
+    min_depth_m: 0.5
 
     # Maximum valid depth accepted within a region.
-    max_depth_m: 4.0
+    max_depth_m: 7.5
 
     # Maximum horizontal distance for one published goal; longer projections are clamped.
-    max_goal_distance_m: 1.5
+    max_goal_distance_m: 5.0
 
     # Z behavior: "current_pose" keeps the current z plane; "fixed" uses fixed_goal_z_m.
     goal_z_mode: "current_pose"

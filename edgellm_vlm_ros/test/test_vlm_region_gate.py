@@ -79,7 +79,10 @@ class ParseRegionTest(unittest.TestCase):
     def test_preserves_rgb_metadata_for_timestamped_tf(self):
         payload = json.dumps({
             "text": '{"region":"CENTER","confidence":0.9}',
-            "stamp": 123.25,
+            # Exact integer fields must win over a low-precision legacy stamp.
+            "stamp": 123.0,
+            "stamp_sec": 123,
+            "stamp_nanosec": 250_000_000,
             "frame_id": "camera_color_optical_frame",
             "image_width": 848,
             "image_height": 480,
@@ -129,6 +132,26 @@ class GoalArbitrationTest(unittest.TestCase):
         b.pose.position.x = 0.3
         b.pose.position.y = 0.4
         self.assertAlmostEqual(gate.pose_distance(a, b), 0.5)
+
+    def test_proposal_serializes_consensus_state(self):
+        class FakePublisher:
+            def __init__(self):
+                self.messages = []
+
+            def publish(self, msg):
+                self.messages.append(msg)
+
+        node = object.__new__(gate.VlmRegionGate)
+        node.consensus = gate.ConsecutiveRegionFilter(required=3, region="CENTER", count=2)
+        node.active_region = None
+        node.active_goal = None
+        node.proposal_pub = FakePublisher()
+
+        node._publish_proposal(self.accepted("CENTER"))
+
+        payload = json.loads(node.proposal_pub.messages[0].data)
+        self.assertEqual(payload["consistency_count"], 2)
+        self.assertEqual(payload["consistency_required"], 3)
 
 
 class TimestampedMapGoalTest(unittest.TestCase):

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -647,9 +648,15 @@ void VlmNode::publishResult(
   double total_ms,
   size_t tokens)
 {
+  int64_t const stamp_ns = frame.stamp.nanoseconds();
+  int64_t const stamp_sec = stamp_ns / 1000000000LL;
+  int64_t const stamp_nanosec = stamp_ns % 1000000000LL;
   std::ostringstream json;
   json << "{"
-       << "\"stamp\":" << stampToSec(frame.stamp) << ","
+       << "\"stamp\":" << std::fixed << std::setprecision(9)
+       << stampToSec(frame.stamp) << std::defaultfloat << std::setprecision(6) << ","
+       << "\"stamp_sec\":" << stamp_sec << ","
+       << "\"stamp_nanosec\":" << stamp_nanosec << ","
        << "\"frame_id\":\"" << jsonEscape(frame.frame_id) << "\","
        << "\"text\":\"" << jsonEscape(text) << "\","
        << "\"finish_reason\":\"" << jsonEscape(finish_reason) << "\","
