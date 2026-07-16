@@ -5,17 +5,11 @@
 Marco S. Tayar\*, Felipe A. G. Tommaselli\*, Pedro Antonio Rabelo Saraiva\*, Gianluca Capezutto\*, Pedro H. V. de Freitas, Lucas Kido, Guilherme Sonego, Ricardo V. Godoy, Marcelo Becker
 University of São Paulo (USP), Brazil · \*Equal contribution
 
-[**Paper (PDF)**](./2026IMAV_VLN_on_the_Fly.pdf) &nbsp;|&nbsp; Submitted to **IMAV 2026** &nbsp;|&nbsp; ROS 2 Humble
+[**Paper (PDF)**](./media/2026IMAV_VLN_on_the_Fly.pdf) &nbsp;|&nbsp; Submitted to **IMAV 2026** &nbsp;|&nbsp; ROS 2 Humble
 
 > 🚧 **Research prototype, real hardware in the loop.** This stack flies a quadrotor. Read [`PRODUCTION_PIPELINE_RUNBOOK.md`](./PRODUCTION_PIPELINE_RUNBOOK.md) end to end — including its safety gates and current NO-GO conditions — before running anything on a vehicle with props on.
 
-<!--
-  VIDEO 1 — hero clip (full pipeline demo).
-  Upload planner_wrapper/trajectories/fps.mp4 to a GitHub issue/PR comment (or Release)
-  to get a permanent asset URL, then replace the line below with that URL on its own line
-  so GitHub renders an inline video player.
--->
-https://github.com/user-attachments/assets/REPLACE_ME_VIDEO_1
+<video src="https://github.com/peDrontonio/VLNontheFly/raw/main/media/VLN.mp4" controls width="100%"></video>
 
 ## Overview
 
@@ -26,7 +20,6 @@ Across 15 real onboard flights targeting three everyday objects (trash bin, chai
 ## Table of Contents
 
 - [Pipeline](#pipeline)
-- [Demo](#demo)
 - [Results](#results)
 - [Repository Layout](#repository-layout)
 - [Hardware](#hardware)
@@ -71,14 +64,6 @@ A single world-frame goal flows downstream through three replaceable stages, eac
 
 See [`PRODUCTION_PIPELINE_RUNBOOK.md`](./PRODUCTION_PIPELINE_RUNBOOK.md) for the exact topic/frame graph, TF chain, and the current validation boundary (autonomous VLM-triggered flight is **NO-GO** until RGB/depth/pose timestamp synchronization lands — see that document for details).
 
-## Demo
-
-<!--
-  VIDEO 2 — secondary clip.
-  Upload planner_wrapper/trajectories/fps1.mp4 the same way and replace the line below.
--->
-https://github.com/user-attachments/assets/REPLACE_ME_VIDEO_2
-
 ## Results
 
 Real-flight evaluation on a quadrotor with a Jetson Orin NX, Intel RealSense D435i, and Pixhawk 6C, over 15 flights from the same take-off pose, 5 per referent:
@@ -90,7 +75,7 @@ Real-flight evaluation on a quadrotor with a Jetson Orin NX, Intel RealSense D43
 | Fire extinguisher | 5 | 4/5 | 7.08 | 37.64 | 38.4 |
 | **Overall** | **15** | **13/15** | **5.72** | **32.91** | **39.3** |
 
-Full experimental setup, qualitative grounding/planning figures, and failure attribution are in the [paper](./2026IMAV_VLN_on_the_Fly.pdf).
+Full experimental setup, qualitative grounding/planning figures, and failure attribution are in the [paper](./media/2026IMAV_VLN_on_the_Fly.pdf).
 
 ## Repository Layout
 
