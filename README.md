@@ -9,13 +9,13 @@ Pedro H. V. de Freitas, Lucas Kido, Guilherme Sonego, Ricardo V. Godoy, Marcelo 
 
 University of São Paulo (USP), Brazil · \*Equal contribution
 
-[![Project Page](https://img.shields.io/badge/Project-Page-2b9bff)](https://vlnonthefly.github.io/)
-[![IMAV 2026](https://img.shields.io/badge/IMAV%202026-Accepted-2ea44f)](https://vlnonthefly.github.io/)
+[![Project Page](https://img.shields.io/badge/Project-Page-2b9bff)](https://vln-on-the-fly.github.io/)
+[![IMAV 2026](https://img.shields.io/badge/IMAV%202026-Accepted-2ea44f)](https://vln-on-the-fly.github.io/)
 [![ROS 2 Humble](https://img.shields.io/badge/ROS%202-Humble-22314E)](https://docs.ros.org/en/humble/)
 
 **🎉 Accepted at the International Micro Air Vehicle Conference (IMAV) 2026.**
 
-[**🌐 Project page**](https://vlnonthefly.github.io/) &nbsp;·&nbsp; **📄 Paper** *(with the IMAV 2026 proceedings)*
+[**🌐 Project page**](https://vln-on-the-fly.github.io/) &nbsp;·&nbsp; **📄 Paper** *(with the IMAV 2026 proceedings)*
 
 </div>
 
@@ -97,7 +97,7 @@ Onboard VLM grounding latency on the Jetson Orin NX (N = 1865 queries):
 | Time-to-first-token | 0.60 s | 0.66 s | 0.72 s |
 | Total inference | 0.79 s | 0.88 s | 1.12 s |
 
-In the cluttered trials, the same stack — unchanged — produced collision-free trajectories toward the referent, and the goal-validation interface degraded to a safe no-commit rather than an unsafe approach when grounding was uncertain. Full experimental setup, qualitative grounding/planning figures, ablations, and failure attribution are on the [project page](https://vlnonthefly.github.io/) and in the paper.
+In the cluttered trials, the same stack — unchanged — produced collision-free trajectories toward the referent, and the goal-validation interface degraded to a safe no-commit rather than an unsafe approach when grounding was uncertain. Full experimental setup, qualitative grounding/planning figures, ablations, and failure attribution are on the [project page](https://vln-on-the-fly.github.io/) and in the paper.
 
 ## Repository Layout
 
