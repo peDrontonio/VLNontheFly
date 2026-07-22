@@ -27,13 +27,13 @@ University of São Paulo (USP), Brazil · \*Equal contribution
 
 ## Overview
 
-Vision-language models (VLMs) have unlocked open-vocabulary, instruction-following navigation on many robot embodiments, but aerial robots have mostly been left out — limited onboard compute, hierarchical-integration complexity, and safety concerns get in the way. **VLN on the Fly** is a fully onboard, decoupled VLN stack for micro air vehicles:
+Vision-language models (VLMs) have unlocked open-vocabulary, instruction-following navigation on many robot embodiments, but aerial robots have mostly been left out, because limited onboard compute, hierarchical-integration complexity, and safety concerns get in the way. **VLN on the Fly** is a fully onboard, decoupled VLN stack for micro air vehicles:
 
 - a **quantized VLM** grounds a natural-language instruction to a coarse image region,
 - a **fast B-spline planner** turns that region into a collision-aware 3D trajectory over an onboard occupancy map, and
 - a **pretrained cross-platform RL policy** tracks it directly to motor commands,
 
-with a lightweight **finite-state-machine safety layer** validating and gating every stage. The decoupled design keeps grounding, planning, and control observable and independently inspectable — so failures can be attributed to a single stage rather than hidden inside an end-to-end policy.
+with a lightweight **finite-state-machine safety layer** validating and gating every stage. The decoupled design keeps grounding, planning, and control observable and independently inspectable, so failures can be attributed to a single stage rather than hidden inside an end-to-end policy.
 
 ## Highlights
 
@@ -42,7 +42,7 @@ with a lightweight **finite-state-machine safety layer** validating and gating e
 | **0.87** | success rate (13 / 15 flights) |
 | **5.72 cm** | mean goal error |
 | **0.79 s** | median onboard VLM query (Jetson Orin NX) |
-| **100%** | onboard compute — no offboard inference |
+| **100%** | onboard compute, no offboard inference |
 
 We deploy the full stack on a real UAV across **15 open-volume flights** across three everyday referents, and validate obstacle avoidance in **6 additional cluttered-environment trials** with collision-free trajectory tracking and safe perception gating.
 
@@ -68,16 +68,16 @@ flowchart LR
     EKF -- "Pose" --> EGO
 
     GOAL --> SAFE["Feasibility / Safety Layer"]
-    SAFE --> EGO["EGO-Planner — B-spline Trajectory"]
+    SAFE --> EGO["EGO-Planner (B-spline Trajectory)"]
     EGO -- "Setpoints" --> RAPTOR["RAPTOR Policy"]
     RAPTOR --> MOT["Motor RPMs"]
 ```
 
 A single world-frame goal flows downstream through three replaceable stages, each checked by the safety layer before it is allowed to act:
 
-1. **Grounding** — [`edgellm_vlm_ros`](./edgellm_vlm_ros) runs an INT4-quantized Qwen-3.5-2B over the live RGB stream and instruction, selecting a cell on a coarse 3×3 grid (or `STOP`) instead of free-form pixel coordinates. The cell is back-projected to a 3D point with aligned depth and camera intrinsics, then validated against the safe flight volume. Grounding at the cell level — rather than a single pixel — keeps the depth read-out valid and boundary-robust (a single pixel is invalid in 76–94% of frames).
-2. **Planning** — [`ego-planner-swarm`](./ego-planner-swarm) (EGO-Planner) builds a local occupancy map from depth + pose and returns a collision-aware, dynamically feasible B-spline trajectory toward the goal, replanning continuously.
-3. **Control** — RAPTOR, a small pretrained recurrent policy running on the Pixhawk, tracks the planner's position setpoints directly to motor commands, replacing the conventional position/attitude controller cascade with a single learned stage that transfers zero-shot across airframes.
+1. **Grounding.** [`edgellm_vlm_ros`](./edgellm_vlm_ros) runs an INT4-quantized Qwen-3.5-2B over the live RGB stream and instruction, selecting a cell on a coarse 3×3 grid (or `STOP`) instead of free-form pixel coordinates. The cell is back-projected to a 3D point with aligned depth and camera intrinsics, then validated against the safe flight volume. Grounding at the cell level, rather than a single pixel, keeps the depth read-out valid and boundary-robust (a single pixel is invalid in 76 to 94% of frames).
+2. **Planning.** [`ego-planner-swarm`](./ego-planner-swarm) (EGO-Planner) builds a local occupancy map from depth + pose and returns a collision-aware, dynamically feasible B-spline trajectory toward the goal, replanning continuously.
+3. **Control.** RAPTOR, a small pretrained recurrent policy running on the Pixhawk, tracks the planner's position setpoints directly to motor commands, replacing the conventional position/attitude controller cascade with a single learned stage that transfers zero-shot across airframes.
 
 ## Results
 
@@ -97,11 +97,11 @@ Onboard VLM grounding latency on the Jetson Orin NX (N = 1865 queries):
 | Time-to-first-token | 0.60 s | 0.66 s | 0.72 s |
 | Total inference | 0.79 s | 0.88 s | 1.12 s |
 
-In the cluttered trials, the same stack — unchanged — produced collision-free trajectories toward the referent, and the goal-validation interface degraded to a safe no-commit rather than an unsafe approach when grounding was uncertain. Full experimental setup, qualitative grounding/planning figures, ablations, and failure attribution are on the [project page](https://vln-on-the-fly.github.io/) and in the paper.
+In the cluttered trials, the same stack (without changes) produced collision-free trajectories toward the referent, and the goal-validation interface degraded to a safe no-commit rather than an unsafe approach when grounding was uncertain. Full experimental setup, qualitative grounding/planning figures, ablations, and failure attribution are on the [project page](https://vln-on-the-fly.github.io/) and in the paper.
 
 ## Repository Layout
 
-This repository doubles as a `colcon` workspace root — packages live directly under it rather than in a nested `src/`.
+This repository doubles as a `colcon` workspace root, so packages live directly under it rather than in a nested `src/`.
 
 | Path | ROS 2 package(s) | Role |
 |---|---|---|
@@ -121,7 +121,7 @@ The validated setup is:
 - Quadrotor airframe with a **Pixhawk 6C** flight controller running **PX4**
 - **Jetson Orin NX** onboard computer (runs the quantized VLM, planner, and safety layer)
 - **Intel RealSense D435i** RGB-D camera
-- **OptiTrack PrimeX 41** motion-capture system for pose (current validation setup only — see the paper's Limitations and [`vio_bridge`](./vio_bridge) for the onboard-localization path)
+- **OptiTrack PrimeX 41** motion-capture system for pose (current validation setup only; see the paper's Limitations and [`vio_bridge`](./vio_bridge) for the onboard-localization path)
 
 ## Installation
 
@@ -164,7 +164,7 @@ source install/setup.bash
 
 ## Running the Stack
 
-Bring the stack up in stages — always with props off, disarmed, and PX4 `EXTERNAL` inactive first. The production launch is:
+Bring the stack up in stages, always with props off, disarmed, and PX4 `EXTERNAL` inactive first. The production launch is:
 
 ```bash
 ros2 launch planner ego_raptor.launch.py \
