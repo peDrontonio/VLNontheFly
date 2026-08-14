@@ -10,3 +10,31 @@
 .git/
 !/.gitignore
 review/*
+
+# --- internal / working data (kept local, not for public) ---
+logs/
+orin_exp/
+*.log
+
+# --- AI/analysis working docs ---
+imav2026_findings.md
+imav2026_findings.pdf
+imav2026_reviewer_feedback.md
+imav2026_reviewer_response_plan.md
+ORIN_REPLAY_GUIDE.md
+message.txt
+
+# --- paper sources / drafts (Paper "soon"; keep out until release) ---
+media/*.tex
+media/*.sty
+media/*.bib
+media/imav_cover*.png
+media/DiagramaIMAV*.pdf
+media/grounding_discrimination.pdf
+media/obstacle_traj3d.pdf
+media/path_planning*.png
+media/qualitative_main.png
+media/xp_scenario.png
+media/2026IMAV_VLN_on_the_Fly_rebuttal.pdf
+# --- project page (lives in its own VLNontheFly.github.io repo) ---
+docs/
