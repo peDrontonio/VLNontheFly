@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>imav_bt</name>
+  <version>0.1.0</version>
+  <description>
+    Behavior-tree mission controller for the IMAV 2026 indoor competition.
+
+    Provides the decision-making layer above ego-planner: which mission runs, in
+    what order, when to give up on a sub-objective, and when to abort the flight.
+    This package contains the framework and the tree skeleton; the per-mission
+    logic is filled in by the team (see docs/ADDING_A_MISSION.md).
+  </description>
+
+  <maintainer email="pedrorabelosaraiva0@gmail.com">VLNontheFly</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>rcl_interfaces</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <!-- Core behaviour tree library. Pure Python, version 2.5.x.
+       apt:  ros-humble-py-trees
+       pip:  py_trees>=2.2,<2.6                                          -->
+  <exec_depend>py_trees</exec_depend>
+
+  <!-- NOTE: py_trees_ros is deliberately NOT a dependency. It would give us
+       tree-introspection topics and the py-trees-tree-watcher CLI, but it is
+       apt-only and not installed here, so depending on it would mean shipping
+       code that cannot be run or tested. bt_engine publishes a rendered tree
+       snapshot on ~/snapshot instead. See docs/ARCHITECTURE.md.           -->
+
+  <test_depend>ament_lint_auto</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
