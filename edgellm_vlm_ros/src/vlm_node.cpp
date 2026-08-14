@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
+#include <string>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -372,6 +373,17 @@ VlmNode::VlmNode(rclcpp::NodeOptions const& options)
     "confidence is a decimal between 0 and 1 with exactly ONE digit after the decimal point. "
     "Output the closing brace and then stop. Do not include markdown, prose, whitespace, or "
     "extra keys.");
+  std::string const region_system_object_prompt = declare_parameter<std::string>(
+    "region_system_object_prompt",
+    "You are a drone navigation assistant. The image is divided into a 3x3 grid of regions "
+    "named TOP-LEFT, TOP-CENTER, TOP-RIGHT, MIDDLE-LEFT, CENTER, MIDDLE-RIGHT, BOTTOM-LEFT, "
+    "BOTTOM-CENTER, BOTTOM-RIGHT. Report which ONE region contains the #TARGET_OBJECT#"
+    ". Return exactly one minified JSON object on one line in this format: "
+    "{\"region\":\"CENTER\",\"confidence\":0.8}. region MUST be exactly one of the nine names, "
+    "or \"NONE\" if the #TARGET_OBJECT# is not visible in the image. confidence is a "
+    "decimal between 0 and 1 with exactly ONE digit after the decimal point: high when you "
+    "clearly see the #TARGET_OBJECT#, and 0.0 when it is not visible. Output the closing "
+    "brace and then stop. Do not include markdown, prose, whitespace, or extra keys.");
   std::string const region_user_prompt = declare_parameter<std::string>(
     "region_user_prompt",
     "Which grid region has the most open space to move toward? Return JSON only.");
@@ -384,16 +396,18 @@ VlmNode::VlmNode(rclcpp::NodeOptions const& options)
   std::string region_system = region_system_prompt;
   std::string region_user = region_user_prompt;
   if (!target_object.empty()) {
-    region_system =
-      "You are a drone navigation assistant. The image is divided into a 3x3 grid of regions "
-      "named TOP-LEFT, TOP-CENTER, TOP-RIGHT, MIDDLE-LEFT, CENTER, MIDDLE-RIGHT, BOTTOM-LEFT, "
-      "BOTTOM-CENTER, BOTTOM-RIGHT. Report which ONE region contains the " + target_object +
-      ". Return exactly one minified JSON object on one line in this format: "
-      "{\"region\":\"CENTER\",\"confidence\":0.8}. region MUST be exactly one of the nine names, "
-      "or \"NONE\" if the " + target_object + " is not visible in the image. confidence is a "
-      "decimal between 0 and 1 with exactly ONE digit after the decimal point: high when you "
-      "clearly see the " + target_object + ", and 0.0 when it is not visible. Output the closing "
-      "brace and then stop. Do not include markdown, prose, whitespace, or extra keys.";
+    region_system = region_system_object_prompt;
+    
+    std::string target_object_regex = "#TARGET_OBJECT#";
+    auto pos = region_system.find(target_object_regex);
+    
+    while (pos != std::string::npos)
+    {
+        region_system.replace(pos, target_object_regex.size(), target_object);
+        
+        pos = region_system.find(target_object_regex, pos + target_object.size());
+    }
+    
     region_user = "Which grid region contains the " + target_object + "? Return JSON only.";
   }
 
