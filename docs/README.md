@@ -13,6 +13,7 @@ test it, and how to fly it.
 | [`HARDWARE_BRINGUP.md`](HARDWARE_BRINGUP.md) | The staged hardware bring-up plan (Stage 0 bench → Stage 3 full stack). |
 | [`RUNBOOK_FIG8.md`](RUNBOOK_FIG8.md) | Step-by-step runbook for the figure-8 flight, including abort criteria. |
 | [`EXTERNAL_MODE_STATUS.md`](EXTERNAL_MODE_STATUS.md) | State of the PX4 `EXTERNAL` mode / Raptor integration, and what is still open. |
+| [`imav_bt/`](imav_bt/) | The IMAV behaviour-tree mission controller: architecture, tree semantics, interfaces, and how to add a behaviour or a mission. **Not flight-validated.** |
 
 ---
 
@@ -52,6 +53,7 @@ evidence, and some have never run at all.
 | `vio_bridge` → `openvins_bridge_node`, `vio_bridge_node` | The path toward replacing OptiTrack with onboard localization. Not flown. |
 | `mobile_flight` | Gazebo SITL and PX4 offboard velocity control. **Simulation only.** |
 | `edgellm_vlm_ros` → `point` / `primitive` modes | Only `region` mode was evaluated. The others are implemented and unit-tested but not flown. |
+| `imav_bt` | **Never flown.** The IMAV 2026 behaviour-tree mission controller. Ticks end-to-end against `scripts/mock_arena.py` and has 71 unit tests, but has never commanded a real aircraft, and the per-mission logic is deliberately left as documented stubs. It publishes goals to ego-planner and never writes actuator commands, so it cannot bypass the validated stack's safety layer. |
 
 ### Why this distinction is enforced, not just documented
 
