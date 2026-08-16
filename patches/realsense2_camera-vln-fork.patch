@@ -1,0 +1,193 @@
+Camera-mount static TF + librealsense SDK pin for the VLN on the Fly airframe.
+
+This is a RECORD of how realsense-ros in this repository diverges from the
+upstream release it was taken from. It is NOT applied at build time -- the
+patched sources are vendored under realsense-ros/. Keep this file in sync when
+the driver is touched, and use it to rebase onto a future upstream release.
+
+Upstream base : IntelRealSense/realsense-ros tag 4.57.7
+Diverges in   : realsense2_camera only
+
+1. Camera-mount static transform.
+   The D435i is bolted to the airframe, not described by a URDF, so nothing
+   published base_link -> camera_link. Goal projection needs that transform to
+   turn a VLM-grounded pixel region into a world-frame point. Adds parameters:
+     publish_mount_tf       (bool,   default false -- off unless asked for)
+     mount_parent_frame_id  (string, default "base_link")
+     mount_x, mount_y, mount_z          (double, metres)
+     mount_roll, mount_pitch, mount_yaw (double, radians)
+   When publish_mount_tf is false the driver behaves exactly like upstream.
+
+2. librealsense SDK pin lowered 2.57.7 -> 2.56.6 in CMakeLists.txt, to match
+   the librealsense2 build installed on the Jetson Orin NX image.
+
+--- a/realsense2_camera/CMakeLists.txt
++++ b/realsense2_camera/CMakeLists.txt
+@@ -152,9 +152,9 @@
+   set(SENSOR_MSGS_TARGET ${sensor_msgs_LIBRARIES})
+ endif()
+ 
+-find_package(realsense2 2.57.7)
++find_package(realsense2 2.56.6)
+ if (BUILD_ACCELERATE_GPU_WITH_GLSL)
+-  find_package(realsense2-gl 2.57.7)
++  find_package(realsense2-gl 2.56.6)
+ endif()
+ if(NOT realsense2_FOUND)
+     message(FATAL_ERROR "\n\n RealSense SDK 2.0 is missing, please install it from https://github.com/realsenseai/librealsense/releases\n\n")
+--- a/realsense2_camera/include/base_realsense_node.h
++++ b/realsense2_camera/include/base_realsense_node.h
+@@ -186,6 +186,8 @@
+         void restartStaticTransformBroadcaster();
+         void publishExtrinsicsTopic(const stream_index_pair& sip, const rs2_extrinsics& ex);
+         void calcAndAppendTransformMsgs(const rs2::stream_profile& profile, const rs2::stream_profile& base_profile);
++        void appendMountTransformMsg(std::vector<geometry_msgs::msg::TransformStamped>& static_tf_msgs,
++                                     const rclcpp::Time& t) const;
+ 
+         void handleHWReset(const std_srvs::srv::Empty::Request::SharedPtr req,
+                                 const std_srvs::srv::Empty::Response::SharedPtr res);
+@@ -358,6 +360,10 @@
+ 
+         std::map<stream_index_pair, bool> _enable;
+         bool _publish_tf;
++        bool _publish_mount_tf;
++        std::string _mount_parent_frame_id;
++        double _mount_x, _mount_y, _mount_z;
++        double _mount_roll, _mount_pitch, _mount_yaw;
+         double _tf_publish_rate, _diagnostics_period;
+         std::mutex _publish_tf_mutex;
+         std::mutex _update_sensor_mutex;
+@@ -442,4 +448,3 @@
+ 
+     };//end class
+ }
+-
+--- a/realsense2_camera/src/base_realsense_node.cpp
++++ b/realsense2_camera/src/base_realsense_node.cpp
+@@ -108,6 +108,14 @@
+     _angular_velocity_cov(0),
+     _hold_back_imu_for_frames(false),
+     _publish_tf(false),
++    _publish_mount_tf(false),
++    _mount_parent_frame_id("base_link"),
++    _mount_x(0.0),
++    _mount_y(0.0),
++    _mount_z(0.0),
++    _mount_roll(0.0),
++    _mount_pitch(0.0),
++    _mount_yaw(0.0),
+     _tf_publish_rate(TF_PUBLISH_RATE),
+     _diagnostics_period(0),
+     _use_intra_process(use_intra_process),
+--- a/realsense2_camera/src/parameters.cpp
++++ b/realsense2_camera/src/parameters.cpp
+@@ -87,6 +87,38 @@
+     _tf_prefix = _parameters->setParam<std::string>(param_name, "");
+     _parameters_names.push_back(param_name);
+ 
++    param_name = std::string("publish_mount_tf");
++    _publish_mount_tf = _parameters->setParam<bool>(param_name, false);
++    _parameters_names.push_back(param_name);
++
++    param_name = std::string("mount_parent_frame_id");
++    _mount_parent_frame_id = _parameters->setParam<std::string>(param_name, "base_link");
++    _parameters_names.push_back(param_name);
++
++    param_name = std::string("mount_x");
++    _mount_x = _parameters->setParam<double>(param_name, 0.0);
++    _parameters_names.push_back(param_name);
++
++    param_name = std::string("mount_y");
++    _mount_y = _parameters->setParam<double>(param_name, 0.0);
++    _parameters_names.push_back(param_name);
++
++    param_name = std::string("mount_z");
++    _mount_z = _parameters->setParam<double>(param_name, 0.0);
++    _parameters_names.push_back(param_name);
++
++    param_name = std::string("mount_roll");
++    _mount_roll = _parameters->setParam<double>(param_name, 0.0);
++    _parameters_names.push_back(param_name);
++
++    param_name = std::string("mount_pitch");
++    _mount_pitch = _parameters->setParam<double>(param_name, 0.0);
++    _parameters_names.push_back(param_name);
++
++    param_name = std::string("mount_yaw");
++    _mount_yaw = _parameters->setParam<double>(param_name, 0.0);
++    _parameters_names.push_back(param_name);
++
+ #if defined (ACCELERATE_GPU_WITH_GLSL)
+     param_name = std::string("accelerate_gpu_with_glsl");
+      _parameters->setParam<bool>(param_name, false, 
+@@ -169,4 +201,3 @@
+         _parameters_names.pop_back();        
+     }
+ }
+-
+--- a/realsense2_camera/src/tfs.cpp
++++ b/realsense2_camera/src/tfs.cpp
+@@ -92,6 +92,33 @@
+     }
+ }
+ 
++void BaseRealSenseNode::appendMountTransformMsg(
++    std::vector<geometry_msgs::msg::TransformStamped>& static_tf_msgs,
++    const rclcpp::Time& t) const
++{
++    if (!_publish_mount_tf)
++        return;
++
++    geometry_msgs::msg::TransformStamped msg;
++    msg.header.stamp = t;
++    msg.header.frame_id = (static_cast<std::ostringstream&&>(
++        std::ostringstream() << _tf_prefix << _mount_parent_frame_id)).str();
++    msg.child_frame_id = BASE_FRAME_ID;
++    msg.transform.translation.x = _mount_x;
++    msg.transform.translation.y = _mount_y;
++    msg.transform.translation.z = _mount_z;
++
++    tf2::Quaternion q;
++    q.setRPY(_mount_roll, _mount_pitch, _mount_yaw);
++    q.normalize();
++    msg.transform.rotation.x = q.x();
++    msg.transform.rotation.y = q.y();
++    msg.transform.rotation.z = q.z();
++    msg.transform.rotation.w = q.w();
++
++    static_tf_msgs.push_back(msg);
++}
++
+ void BaseRealSenseNode::publishExtrinsicsTopic(const stream_index_pair& sip, const rs2_extrinsics& ex){
+     // Publish extrinsics topic:
+     Extrinsics msg = rsExtrinsicsToMsg(ex);
+@@ -251,7 +278,9 @@
+ {
+     restartStaticTransformBroadcaster();
+ 
+-    _static_tf_broadcaster->sendTransform(_static_tf_msgs);
++    auto static_tf_msgs = _static_tf_msgs;
++    appendMountTransformMsg(static_tf_msgs, _node.now());
++    _static_tf_broadcaster->sendTransform(static_tf_msgs);
+ }
+ 
+ void BaseRealSenseNode::publishDynamicTransforms()
+@@ -272,9 +301,11 @@
+             rclcpp::Time t = _node.now();
+             try
+             {
+-                for(auto& msg : _static_tf_msgs)
++                auto static_tf_msgs = _static_tf_msgs;
++                appendMountTransformMsg(static_tf_msgs, t);
++                for(auto& msg : static_tf_msgs)
+                     msg.header.stamp = t;
+-                _dynamic_tf_broadcaster->sendTransform(_static_tf_msgs);
++                _dynamic_tf_broadcaster->sendTransform(static_tf_msgs);
+             }
+             catch(const std::exception& e)
+             {
+@@ -322,4 +353,3 @@
+         }
+     }
+ }
+-
