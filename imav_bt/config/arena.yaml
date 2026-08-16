@@ -1,0 +1,71 @@
+# arena.yaml — named positions in the flight arena.
+#
+# ############################################################################
+# #  EVERY COORDINATE BELOW IS A PLACEHOLDER AND WILL BE WRONG ON THE DAY.   #
+# #  They exist so the tree can be built and bench-tested. Re-survey them    #
+# #  against the real arena and the real localization origin before flying.  #
+# ############################################################################
+#
+# Why anchors instead of coordinates in the code
+# ----------------------------------------------
+# Behaviours refer to anchors BY NAME ("room_face"), never by number. Two
+# things follow:
+#
+#   * Re-surveying the arena is a change to this file only.
+#   * The localization backend can change -- OptiTrack, OpenVINS, UWB beacons --
+#     without touching a single behaviour, because the tree only ever asks for
+#     "the room face" and this file says where that is in the current frame.
+#
+# That second property matters: OptiTrack will NOT be available at INSA
+# Strasbourg, and the choice of replacement is still open. Note that using
+# beacons drops the autonomy factor A from 1.0 to 0.7 (rulebook 4.1), which
+# costs roughly 4 points per mission after the mass factor.
+
+# Frame all anchors are expressed in. Must match ego-planner's world frame,
+# which is ENU: +x East, +y North, +z Up.
+frame_id: map
+
+anchors:
+  # Takeoff / landing area (rulebook fig. 7: take-off platform carries ArUco id0,
+  # landing platform carries ArUco id1).
+  takeoff_pad: [0.0, 0.0, 1.2]
+  landing_pad: [0.0, 2.0, 1.2]
+
+  # Mission 1 — the obstacle lane, entered from the takeoff end.
+  course_entry: [2.0, 0.0, 1.2]
+  window_panel_a: [3.5, 0.0, 1.2]
+  red_bar: [5.0, 0.0, 1.4]
+  blue_bars: [6.5, 0.0, 0.7]
+  tube_passage: [8.0, 0.0, 1.2]
+  window_panel_b: [9.5, 0.0, 1.2]
+
+  # Mission 2 — the 2.5 m cube with the two windows.
+  room_face: [11.5, 1.5, 1.3]
+  room_interior: [12.5, 1.5, 1.3]
+
+  # Mission 3 — the three boxes, one of which is heated to 70-100 degC.
+  box_area: [11.0, 4.0, 1.5]
+
+  # Mission 4 — the wind turbine. The ring sits 50 cm up on its support and
+  # trails 4 m of 0.1 mm copper wire, so `turbine_base` is where the drone MUST
+  # land (rulebook 4.4.7) rather than returning to the landing pad.
+  ring_support: [12.0, 5.5, 0.7]
+  blade_contact: [12.0, 6.0, 1.6]
+  turbine_base: [12.0, 5.5, 0.3]
+
+# ArUco marker ids, from rulebook figs. 7 and 18. 5x5 dictionary.
+# Nothing reads these yet -- no ArUco detection exists in the repo. They are
+# recorded here so the detector has one place to look when it is written.
+aruco:
+  dictionary: DICT_5X5_50
+  takeoff_platform: 0
+  landing_platform: 1        # 80x80 cm marker on an 80x80 cm platform
+  ring_support: [4, 5, 6]    # stacked 100 mm apart on the support face
+
+# Landing platform behaviour, rulebook 4.2.1. Three modes; the organisers pick.
+# Landing on the moving platform scores 2 points, static 1 -- and in a chained
+# flight that bonus is applied to EVERY mission in the flight.
+landing_platform:
+  size_m: 0.8
+  translation_speed_mps: 0.1
+  max_pitch_deg: 10.0

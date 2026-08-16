@@ -8,4 +8,8 @@ find_package(ament_cmake_python REQUIRED)
 # Same mechanism depth_estimator uses for its package module.
 ament_python_install_package(${PROJECT_NAME})
 
+install(DIRECTORY config launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
 ament_package()

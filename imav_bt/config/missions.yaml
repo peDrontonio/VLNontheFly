@@ -1,0 +1,63 @@
+# missions.yaml — per-mission policy, and the stub controls.
+#
+# Two distinct things live in this file:
+#
+#   POLICY   enabled / deadline_s / attempts. These stay meaningful once the
+#            real mission logic replaces the stubs.
+#   STUBS    the `steps:` blocks. These exist only while the leaves are
+#            placeholders. Each entry makes one step succeed, fail, or run for
+#            N ticks -- which is how mission failures are rehearsed on the
+#            bench without writing any code.
+#
+# Fault injection, no code changes required
+# -----------------------------------------
+# Make mission 2 fail and watch the flight carry on to the landing anyway:
+#
+#     missions:
+#       mission2:
+#         steps:
+#           ApproachRoom: {outcome: failure}
+#
+# Then confirm missions 1 and 3 still report success and the drone still lands.
+# That is the behaviour the +12 chaining bonus depends on; see docs/TESTING.md.
+#
+# Step outcomes: success | failure | running
+#   `running` never finishes, which is how the Deadline decorator is exercised.
+
+missions:
+  mission1:
+    enabled: true
+    # Generous: the course has six gates, each with a detect/align/traverse
+    # cycle, and the whole thing shares a 30-minute slot with everything else.
+    deadline_s: 240.0
+    # One attempt. Mission 1's gates already degrade internally (red -> blue ->
+    # skip), so a retry would mostly re-fly gates that already succeeded.
+    attempts: 1
+    steps: {}
+
+  mission2:
+    enabled: true
+    deadline_s: 180.0
+    attempts: 1
+    steps: {}
+
+  mission3:
+    enabled: true
+    deadline_s: 150.0
+    # Worth retrying: if the thermal scan is inconclusive the whole mission is
+    # a short there-and-back, and Hb alone is 3 of the 7 raw points.
+    attempts: 2
+    steps: {}
+
+  mission4:
+    enabled: true
+    # The longest mission: approach, visual-servo grab, verify, blade approach,
+    # contact. All of it slow and close to structure.
+    deadline_s: 300.0
+    attempts: 1
+    steps: {}
+
+# The precision-landing ladder shared by FlightA. Not used by FlightB, which
+# lands at the turbine base instead (rulebook 4.4.7, the copper wire).
+landing:
+  steps: {}
