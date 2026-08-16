@@ -1,3 +1,20 @@
+> ### ⚠️ This is a modified, trimmed fork
+>
+> Not upstream realsense-ros. Two differences you need to know about:
+>
+> 1. **`realsense2_camera` is patched.** It adds a camera-mount static TF
+>    (`publish_mount_tf`, `mount_parent_frame_id`, `mount_x/y/z/roll/pitch/yaw`)
+>    publishing `base_link -> camera_link`, which the VLN goal projection depends
+>    on, and the librealsense pin is lowered to **2.56.6** to match the Jetson
+>    image. The full divergence against upstream tag `4.57.7` is recorded in
+>    [`patches/realsense2_camera-vln-fork.patch`](../patches/realsense2_camera-vln-fork.patch).
+> 2. **Only the packages we build are kept**: `realsense2_camera` and
+>    `realsense2_camera_msgs`. `realsense2_description`, `realsense2_rgbd_plugin`
+>    and `realsense2_ros_mqtt_bridge` were removed as unreferenced, so some links
+>    in the upstream text below point at packages that are not here.
+>
+> See [`docs/DEPENDENCIES.md`](../docs/DEPENDENCIES.md).
+
 
 <p align="center">
   <!-- Light mode -->
@@ -62,7 +79,7 @@ Note: A redirection from the previous name IntelRealSense is currently in place,
      * [Available Actions](#available-actions)
      * [Efficient intra-process communication](#efficient-intra-process-communication)
      * [Logging](#logging)
-  * [ROS <-> MQTT Bridge Node](realsense2_ros_mqtt_bridge/README.md)
+  * ROS <-> MQTT Bridge Node *(package removed in this fork)*
   * [Contributing](CONTRIBUTING.md)
   * [License](LICENSE)
 
