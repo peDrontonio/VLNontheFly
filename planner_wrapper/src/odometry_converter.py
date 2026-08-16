@@ -102,7 +102,7 @@ class VehicleOdomConverter(Node):
         # against the firmware publishing /fmu/out/vehicle_odometry.
         yaw_in = math.degrees(rot_ned.as_euler('zyx')[0])
         yaw_out = math.degrees(rot_enu.as_euler('zyx')[0])
-        self.get_logger().info(
+        self.get_logger().debug(
             f"IN q[w,x,y,z]=[{q[0]:+.3f},{q[1]:+.3f},{q[2]:+.3f},{q[3]:+.3f}] "
             f"(NED yaw {yaw_in:+.1f}) -> OUT yaw {yaw_out:+.1f} deg "
             f"(ENU q[x,y,z,w]=[{q_enu[0]:+.3f},{q_enu[1]:+.3f},{q_enu[2]:+.3f},{q_enu[3]:+.3f}])",
