@@ -41,3 +41,4 @@ docs/
 
 # fetched by: vcs import < third_party.repos
 /px4_msgs/
+/planner_wrapper/imports/navdp/depth_anything/
