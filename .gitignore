@@ -1,20 +1,37 @@
+# --- build artefacts ---
 **/build/
 **/install/
 **/log/
 **/.vscode/
 **/__pycache__/
 *.pyc
-*.pt
-*.ckpt
-*.db3
 .git/
 !/.gitignore
-review/*
+
+# --- model weights (never in git; see docs/DEPENDENCIES.md) ---
+*.pt
+*.ckpt
+*.pth
+*.engine
+*.onnx
+
+# --- flight data (never in git) ---
+# A 14 GiB blob was created once by an accidental `git add` of a rosbag.
+bags/
+bags_kido/
+*.db3
+*.bag
+*.mcap
+*.tlog
+*.tlog.raw
+*.parm
 
 # --- internal / working data (kept local, not for public) ---
+review/*
 logs/
 orin_exp/
 *.log
+AI_SLOP_DETECTIONS/
 
 # --- AI/analysis working docs ---
 imav2026_findings.md
@@ -36,9 +53,11 @@ media/path_planning*.png
 media/qualitative_main.png
 media/xp_scenario.png
 media/2026IMAV_VLN_on_the_Fly_rebuttal.pdf
-# --- project page (lives in its own VLNontheFly.github.io repo) ---
-docs/
 
-# fetched by: vcs import < third_party.repos
+# NOTE: docs/ used to be ignored here, for the project page that now lives in
+# its own VLNontheFly.github.io repository. docs/ is this workspace's
+# documentation tree and IS tracked.
+
+# --- fetched by: vcs import < third_party.repos ---
 /px4_msgs/
 /planner_wrapper/imports/navdp/depth_anything/

@@ -103,16 +103,22 @@ In the cluttered trials, the same stack (without changes) produced collision-fre
 
 This repository doubles as a `colcon` workspace root, so packages live directly under it rather than in a nested `src/`.
 
-| Path | ROS 2 package(s) | Role |
-|---|---|---|
-| [`edgellm_vlm_ros`](./edgellm_vlm_ros) | `edgellm_vlm_ros` | TensorRT Edge-LLM VLM inference (point/region/primitive/supervised modes), goal gates, safety supervisor |
-| [`ego-planner-swarm`](./ego-planner-swarm) | `ego_planner`, `plan_env`, `bspline_opt`, `path_searching`, `traj_utils`, `poscmd_2_odom`, `quadrotor_msgs`, … | EGO-Planner B-spline trajectory generation, occupancy mapping, `raptor_path_tracker.py` bridge to PX4 EXTERNAL mode |
-| [`planner_wrapper`](./planner_wrapper) | `planner` | Experimental NavDP / iPlanner planner wrapper and trajectory demo assets (research alternative to EGO-Planner) |
-| [`vio_bridge`](./vio_bridge) | `vio_bridge` | Visual-inertial odometry bridge, toward replacing the OptiTrack pose source with onboard localization |
-| [`depth_estimator`](./depth_estimator) | `depth_estimator` | Monocular depth (Depth Anything V2) wrapper, alternative to RealSense stereo depth |
-| [`mobile_flight`](./mobile_flight) | `mobile_gazebo`, `mobile_msgs` | PX4 offboard velocity control, Gazebo SITL simulation stack |
-| [`realsense-ros`](./realsense-ros) | `realsense2_camera`, … | Vendored Intel RealSense ROS 2 driver |
-| [`px4_msgs`](./px4_msgs) | `px4_msgs` | PX4 ROS 2 message definitions |
+| Path | ROS 2 package(s) | Role | Flown? |
+|---|---|---|---|
+| [`edgellm_vlm_ros`](./edgellm_vlm_ros) | `edgellm_vlm_ros` | TensorRT Edge-LLM VLM inference (point/region/primitive/supervised modes), goal gates, safety supervisor | ✅ `region` mode |
+| [`ego-planner-swarm`](./ego-planner-swarm) | `ego_planner`, `plan_env`, `bspline_opt`, `path_searching`, `traj_utils`, `quadrotor_msgs` | EGO-Planner B-spline trajectory generation, occupancy mapping, `raptor_path_tracker.py` bridge to PX4 EXTERNAL mode | ✅ |
+| [`planner_wrapper`](./planner_wrapper) | `planner` | The `ego_raptor` flight pipeline: odometry conversion, `pos_cmd` → Raptor bridge, goal remapping. Also hosts the experimental NavDP / iPlanner wrappers. | ✅ `ego_raptor` only |
+| [`vio_bridge`](./vio_bridge) | `vio_bridge` | OptiTrack pose bridge into the PX4 EKF, plus the VIO path toward onboard localization | ✅ OptiTrack only |
+| [`depth_estimator`](./depth_estimator) | `depth_estimator` | Monocular depth (Depth Anything V2) wrapper, alternative to RealSense stereo depth | ⚠️ never flown |
+| [`mobile_flight`](./mobile_flight) | `mobile_gazebo`, `mobile_msgs` | PX4 offboard velocity control, Gazebo SITL simulation stack | ⚠️ simulation only |
+| [`realsense-ros`](./realsense-ros) | `realsense2_camera` | Intel RealSense D435i driver. **A modified fork** — adds the camera-mount static TF the goal projection relies on; see [`docs/DEPENDENCIES.md`](./docs/DEPENDENCIES.md) | ✅ |
+| [`tests`](./tests) | — | Every unit test in the workspace: `pytest tests/` | — |
+| [`docs`](./docs) | — | Install, dependencies, testing, hardware bring-up, flight runbooks | — |
+
+`px4_msgs` and the NavDP depth backbone are **fetched, not vendored** — see
+[`third_party.repos`](./third_party.repos). Full validated-vs-experimental
+breakdown, including which components have never run at all, is in
+[`docs/README.md`](./docs/README.md).
 
 ## Hardware
 
@@ -127,9 +133,9 @@ The validated setup is:
 
 ### Prerequisites
 
-- Ubuntu 22.04 with **ROS 2 Humble**
+- Ubuntu 22.04 with **ROS 2 Humble**, plus `python3-vcstool`
 - [PX4](https://px4.io/) firmware on the flight controller, with the Micro XRCE-DDS agent for ROS 2 ⟷ PX4 bridging
-- Intel RealSense SDK (`librealsense2`) for [`realsense-ros`](./realsense-ros)
+- Intel RealSense SDK (`librealsense2`) **2.56.6** for [`realsense-ros`](./realsense-ros)
 - A **TensorRT Edge-LLM** build for the quantized Qwen-3.5-2B engine used by `edgellm_vlm_ros`
 - Python packages for `depth_estimator` (optional, only if using monocular depth instead of the D435i's stereo depth):
 
@@ -143,6 +149,10 @@ The validated setup is:
 ```bash
 git clone https://github.com/peDrontonio/VLNontheFly.git
 cd VLNontheFly
+
+# fetch the third-party sources that are pinned rather than vendored
+# (px4_msgs, and the NavDP depth backbone). Not optional.
+vcs import < third_party.repos
 
 source /opt/ros/humble/setup.bash
 source /home/orin/ros2_ws/install/setup.bash   # your PX4 / Micro-XRCE-DDS workspace, if separate
@@ -186,6 +196,18 @@ ros2 launch edgellm_vlm_ros d435i_vlm.launch.py \
 ```
 
 See each package's own README ([`edgellm_vlm_ros`](./edgellm_vlm_ros/README.md), [`mobile_flight`](./mobile_flight/README.md), [`depth_estimator`](./depth_estimator/README.md)) for mode-specific details, parameters, and simulation-only workflows. Validate RGB/depth/pose synchronization and the safety-gate behavior before enabling autonomous, VLM-triggered flight.
+
+## Testing
+
+```bash
+pytest tests/        # 45 unit tests, no hardware, no weights
+```
+
+That is the first rung of a ladder that ends at a real flight.
+[`docs/TESTING.md`](./docs/TESTING.md) has every rung and its pass criteria,
+[`docs/HARDWARE_BRINGUP.md`](./docs/HARDWARE_BRINGUP.md) is the staged
+props-off bring-up plan, and [`docs/RUNBOOK_FIG8.md`](./docs/RUNBOOK_FIG8.md)
+is the step-by-step flight runbook including abort criteria.
 
 ## Citation
 
