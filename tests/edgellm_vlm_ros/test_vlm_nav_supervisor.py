@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "vlm_nav_supervisor.py"
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / "edgellm_vlm_ros" / "scripts" / "vlm_nav_supervisor.py"
 SPEC = importlib.util.spec_from_file_location("vlm_nav_supervisor", SCRIPT_PATH)
 supervisor = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = supervisor

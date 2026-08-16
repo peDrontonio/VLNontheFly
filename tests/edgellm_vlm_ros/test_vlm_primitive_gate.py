@@ -8,7 +8,7 @@ from pathlib import Path
 from px4_msgs.msg import VehicleLocalPosition
 
 
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "vlm_primitive_gate.py"
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / "edgellm_vlm_ros" / "scripts" / "vlm_primitive_gate.py"
 SPEC = importlib.util.spec_from_file_location("vlm_primitive_gate", SCRIPT_PATH)
 gate = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = gate

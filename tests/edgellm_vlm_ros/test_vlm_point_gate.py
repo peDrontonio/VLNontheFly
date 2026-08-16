@@ -11,7 +11,7 @@ from sensor_msgs.msg import CameraInfo
 from sensor_msgs.msg import Image
 
 
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "vlm_point_gate.py"
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / "edgellm_vlm_ros" / "scripts" / "vlm_point_gate.py"
 SPEC = importlib.util.spec_from_file_location("vlm_point_gate", SCRIPT_PATH)
 gate = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = gate

@@ -8,7 +8,7 @@ import numpy as np
 from geometry_msgs.msg import TransformStamped
 
 
-SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+SCRIPTS = Path(__file__).resolve().parents[2] / "edgellm_vlm_ros" / "scripts"
 
 
 def _load(name):
