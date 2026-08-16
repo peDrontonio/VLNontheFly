@@ -1,0 +1,19 @@
+# Third-party ROS 2 sources fetched at setup time instead of vendored in git.
+#
+#   vcs import < third_party.repos
+#
+# Only pristine upstream code belongs here. Anything we patch stays vendored in
+# the tree, with the divergence recorded under patches/ and explained in
+# docs/THIRD_PARTY.md -- see the realsense-ros entry there.
+#
+# Versions below were not read off a package.xml; each one was verified by
+# comparing the git tree hash of the previously vendored copy against every
+# upstream tag, so what you fetch is byte-for-byte what we flew.
+
+repositories:
+  px4_msgs:
+    type: git
+    url: https://github.com/PX4/px4_msgs.git
+    # PX4 v1.16.2. Tree-hash verified against the copy vendored until this
+    # commit: msg/ = ff5176c2d2dbb335460c97eaf0c9d6a1f6c2afc4
+    version: 392e831c1f659429ca83902e66820d7094591410

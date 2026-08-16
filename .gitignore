@@ -38,3 +38,6 @@ media/xp_scenario.png
 media/2026IMAV_VLN_on_the_Fly_rebuttal.pdf
 # --- project page (lives in its own VLNontheFly.github.io repo) ---
 docs/
+
+# fetched by: vcs import < third_party.repos
+/px4_msgs/
