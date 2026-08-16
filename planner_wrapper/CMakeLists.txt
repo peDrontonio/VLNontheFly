@@ -24,19 +24,35 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY 
-   imports/navdp/depth_anything
-  DESTINATION lib/${PROJECT_NAME}
-)
+# Depth-Anything-V2 is fetched, not vendored (see third_party.repos), and the
+# NavDP/iPlanner checkpoints are large binaries that live outside git (see
+# docs/MODELS.md). Both are only needed by the EXPERIMENTAL NavDP/iPlanner
+# nodes, so their absence must not break a build of the validated flow.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/imports/navdp/depth_anything")
+  install(DIRECTORY
+    imports/navdp/depth_anything
+    DESTINATION lib/${PROJECT_NAME}
+  )
+else()
+  message(STATUS
+    "planner: imports/navdp/depth_anything not found -- skipping. "
+    "Run `vcs import < third_party.repos` if you need the NavDP planner.")
+endif()
 
 install(DIRECTORY configs/
   DESTINATION share/${PROJECT_NAME}/configs
 )
 
-install(DIRECTORY
-  checkpoints/
-  DESTINATION share/${PROJECT_NAME}/checkpoints
-)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/checkpoints")
+  install(DIRECTORY
+    checkpoints/
+    DESTINATION share/${PROJECT_NAME}/checkpoints
+  )
+else()
+  message(STATUS
+    "planner: checkpoints/ not found -- skipping. "
+    "Run scripts/fetch_models.sh if you need NavDP or iPlanner.")
+endif()
 
 # instala o pacote python
 install(DIRECTORY 
