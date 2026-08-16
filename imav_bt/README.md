@@ -34,7 +34,7 @@ which are cheap to swap, are stubs.
 | Perception (ArUco, gate detection, counting, thermal) | Not started — none exists in the repo |
 | Payload drivers | Mocked behind `scripts/payload_node.py` |
 
-To fill in a mission, see **[docs/ADDING_A_MISSION.md](../docs/imav_bt/ADDING_A_MISSION.md)**.
+To fill in a mission, see **[docs/ADDING_A_MISSION.md](docs/ADDING_A_MISSION.md)**.
 
 ## Installation
 
@@ -79,7 +79,7 @@ ros2 launch imav_bt bt_bench.launch.py planner_mode:=silent
 ros2 launch imav_bt bt_bench.launch.py battery_drain_per_min:=20.0
 ```
 
-The full fault-injection matrix is in [docs/imav_bt/TESTING.md](../docs/imav_bt/TESTING.md).
+The full fault-injection matrix is in [docs/TESTING.md](docs/TESTING.md).
 
 ## Flying it
 
@@ -156,22 +156,21 @@ Three plain YAML files in `config/`, read at startup:
 ## Tests
 
 ```bash
-pytest tests/imav_bt/          # this package only
-pytest tests/                  # the whole workspace
-# or a single file directly, no ROS graph needed:
-python3 tests/imav_bt/test_decorators.py
+colcon test --packages-select imav_bt --event-handlers console_direct+
+# or directly, no ROS graph needed:
+python3 test/test_decorators.py
 ```
 
 71 tests, no ROS graph, no hardware, sub-second. See
-[docs/imav_bt/TESTING.md](../docs/imav_bt/TESTING.md).
+[docs/TESTING.md](docs/TESTING.md).
 
 ## Documentation
 
 | Document | Read it when |
 |---|---|
-| [ARCHITECTURE.md](../docs/imav_bt/ARCHITECTURE.md) | you want the design rationale and the boundaries |
-| [TREE_SEMANTICS.md](../docs/imav_bt/TREE_SEMANTICS.md) | **before writing any tree code** — the py_trees rules that bite |
-| [ADDING_A_BEHAVIOR.md](../docs/imav_bt/ADDING_A_BEHAVIOR.md) | you are replacing a stub with a real leaf |
-| [ADDING_A_MISSION.md](../docs/imav_bt/ADDING_A_MISSION.md) | you are filling in or adding a mission subtree |
-| [INTERFACES.md](../docs/imav_bt/INTERFACES.md) | you need the exact topics, services and status strings |
-| [TESTING.md](../docs/imav_bt/TESTING.md) | you are verifying a change, bench to flight |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | you want the design rationale and the boundaries |
+| [TREE_SEMANTICS.md](docs/TREE_SEMANTICS.md) | **before writing any tree code** — the py_trees rules that bite |
+| [ADDING_A_BEHAVIOR.md](docs/ADDING_A_BEHAVIOR.md) | you are replacing a stub with a real leaf |
+| [ADDING_A_MISSION.md](docs/ADDING_A_MISSION.md) | you are filling in or adding a mission subtree |
+| [INTERFACES.md](docs/INTERFACES.md) | you need the exact topics, services and status strings |
+| [TESTING.md](docs/TESTING.md) | you are verifying a change, bench to flight |
