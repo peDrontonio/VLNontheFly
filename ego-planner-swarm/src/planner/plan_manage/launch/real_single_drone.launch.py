@@ -20,8 +20,8 @@ def generate_launch_description():
         /drone_0_planning/pos_cmd:
             formato: quadrotor_msgs/PositionCommand
 
-    The pos_cmd → PX4 velocity bridge is the `ego_planner_bridge` node in the
-    `planner` package (see mobile_gazebo ego_planner_flight.launch.py).
+    The pos_cmd → PX4 bridge is the `pos_cmd_to_raptor` node in the `planner`
+    package (see planner ego_raptor.launch.py).
 
     Launch arguments:
         use_sim_time: set true when replaying a bag with `--clock` so the grid

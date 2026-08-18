@@ -28,8 +28,9 @@ export ROS_DOMAIN_ID=30
 export ROS_LOCALHOST_ONLY=0
 ```
 
-`planner ego_raptor.launch.py` is the Raptor EXTERNAL wrapper, not the whole old
-`mobile_gazebo ego_planner_flight.launch.py` stack. It always starts:
+`planner ego_raptor.launch.py` is the Raptor EXTERNAL wrapper and is now the only
+flight entry point; the old `mobile_gazebo` offboard-velocity stack has been removed
+from this repository. It always starts:
 
 - `/fmu/out/vehicle_odometry` → `/odometry`
 - `/drone_0_planning/pos_cmd` → `/fmu/in/trajectory_setpoint_raptor`
@@ -54,9 +55,8 @@ Important defaults:
 - `with_realsense:=false`: not needed for Stage 2; required for full planner Stage 3.
 - `with_optitrack:=false`: if enabled, the production wrapper consumes the tracked
   `base_link` pose from `/base_link/pose`.
-- Do **not** run `mobile_gazebo ego_planner_flight.launch.py` at the same time as
-  `ego_raptor`; it starts the old offboard velocity controller and duplicates parts of the
-  stack.
+- Do **not** run any other offboard-control node at the same time as `ego_raptor`; a
+  second setpoint publisher duplicates parts of the stack and fights it for control.
 
 ---
 
@@ -79,8 +79,7 @@ Must be running:
 
 Must **not** be running:
 
-- [ ] `mobile_gazebo ego_planner_flight.launch.py` or `mobile_gazebo optitrack_full_pipeline.launch.py`
-      during this Raptor test; those launch the old offboard-control path.
+- [ ] any other offboard-control or setpoint-publishing node during this Raptor test.
 - [ ] RealSense, unless debugging Stage 3 planner perception.
 
 Checks:
