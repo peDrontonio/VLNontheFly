@@ -1,3 +1,9 @@
+> **Vendored and trimmed copy.** Only `realsense2_camera` and `realsense2_camera_msgs` are
+> kept in this repository. The `realsense2_description`, `realsense2_rgbd_plugin` and
+> `realsense2_ros_mqtt_bridge` packages, along with the upstream examples, tests and tools,
+> were removed as unused by this project's flight stack. Instructions below that mention
+> them apply to the upstream repository, not to this copy.
+
 
 <p align="center">
   <!-- Light mode -->
