@@ -256,16 +256,6 @@ if (BUILD_ACCELERATE_GPU_WITH_GLSL)
   list(APPEND INCLUDES include/gl_window.h)
 endif()
 
-if (BUILD_TOOLS)
-
-  include_directories(tools)
-  set(INCLUDES ${INCLUDES}
-    tools/frame_latency/frame_latency.h)
-
-  set(SOURCES ${SOURCES}
-    tools/frame_latency/frame_latency.cpp)
-endif()
-
 add_library(${PROJECT_NAME} SHARED
     ${INCLUDES}
     ${SOURCES}
@@ -352,15 +342,6 @@ rclcpp_components_register_node(${PROJECT_NAME}
   EXECUTABLE realsense2_camera_node
 )
 
-if(BUILD_TOOLS)
-
-  rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "rs2_ros::tools::frame_latency::FrameLatencyNode"
-  EXECUTABLE realsense2_frame_latency_node
-  )
-
-endif()
-
 # Install binaries
 install(TARGETS ${PROJECT_NAME}
   ARCHIVE DESTINATION lib
@@ -379,12 +360,6 @@ install(DIRECTORY
     launch
     DESTINATION share/${PROJECT_NAME}
     )
-
-# Install example files
-install(DIRECTORY 
-    examples
-    DESTINATION share/${PROJECT_NAME}
-)
 
 # Test
 if(BUILD_TESTING)
