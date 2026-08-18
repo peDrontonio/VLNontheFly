@@ -22,7 +22,7 @@ firmware's 300 ms staleness freeze then holds the last target.
 Frame note: ego-planner's /odometry must come from the PX4 EKF
 (odometry_converter.py on /fmu/out/vehicle_odometry) so both sides share the
 same local origin. Keep the conversions here consistent with
-odometry_converter.py and ego_planner_bridge.py.
+odometry_converter.py.
 """
 import math
 
