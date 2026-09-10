@@ -1,0 +1,57 @@
+# bt.yaml — engine and safety settings.
+#
+# Plain YAML, NOT a ROS parameter file. The node takes exactly one ROS
+# parameter, `config_dir`, and reads this file plus arena.yaml and missions.yaml
+# from it. That keeps mission tuning in files you can diff and version rather
+# than in launch-file argument soup.
+#
+#   ros2 run imav_bt bt_node.py --ros-args -p config_dir:=/path/to/config
+
+# Tree tick rate [Hz]. The tree is a decision layer, not a controller -- the
+# 100 Hz control loop lives in ego-planner and Raptor. 10 Hz is plenty and
+# keeps the Orin free for perception. Raising it does not make the drone more
+# responsive; it only makes the safety branch re-evaluate sooner, and 100 ms is
+# already far below any reaction time that matters here.
+tick_hz: 10.0
+
+# Publish a rendered tree snapshot on ~/snapshot every N ticks (0 disables).
+# This is the poor-man's tree watcher; see README "Watching the tree".
+snapshot_every_n_ticks: 10
+
+safety:
+  # Battery state of charge below which the flight is aborted, in [0, 1].
+  # ONLY enforced once a battery message has actually been received -- a drone
+  # with no battery topic must still be able to fly. See behaviors/guards.py.
+  min_battery: 0.25
+
+  # How stale /odometry may get before pose is treated as lost [s].
+  max_odom_age_s: 1.0
+
+  # Whether missing odometry is an emergency. Unlike the battery, absence here
+  # IS the failure: ego-planner cannot plan without pose and will reject every
+  # goal with `rejected:not_ready`.
+  #
+  # Set false ONLY for bench runs where nothing publishes /odometry.
+  require_odom: true
+
+  # Flight volume [xmin, xmax, ymin, ymax, zmin, zmax] in the ENU `map` frame.
+  # Commented out until the arena is surveyed -- see the warning in arena.yaml.
+  #
+  # The IMAV indoor cage is 14 x 7 x 4 m (rulebook 4.2), but the useful bound is
+  # your own flight volume INSIDE it, with margin. Do not simply copy the cage
+  # dimensions: a geofence that coincides with the netting gives you no room to
+  # react.
+  # geofence: [0.5, 13.5, 0.5, 6.5, 0.2, 3.5]
+
+  # How long the emergency response is given before it is abandoned [s].
+  steps:
+    EmergencyLand:
+      ticks: 5
+
+# Topic overrides. Defaults come from imav_bt/interfaces.py; set these only if
+# your graph is namespaced differently.
+topics:
+  odom: /odometry
+  goal_status: /planning/goal_status
+  battery: /battery_status
+  goal: /move_base_simple/goal

@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>planner</name>
+  <version>0.0.0</version>
+  <description>Pacote wrapper dos planners NavDP e Iplanner</description>
+
+  <maintainer email="voce@email.com">Seu Nome</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>geometry_msgs</depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>quadrotor_msgs</exec_depend>
+  <exec_depend>mobile_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

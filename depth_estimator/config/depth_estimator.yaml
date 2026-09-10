@@ -1,0 +1,31 @@
+# config/depth_estimator.yaml
+# Parâmetros padrão para o nó depth_estimator_node
+# Carregue com: ros2 launch depth_estimator depth_estimator.launch.py
+
+depth_estimator:
+  ros__parameters:
+
+    # ── Modelo ────────────────────────────────────────────────────────────────
+    # Checkpoints disponíveis (HuggingFace):
+    #   depth-anything/Depth-Anything-V2-Small-hf   ← mais rápido  (~25 ms/frame @GPU)
+    #   depth-anything/Depth-Anything-V2-Base-hf
+    #   depth-anything/Depth-Anything-V2-Large-hf   ← mais preciso (~90 ms/frame @GPU)
+    model_name: "depth-anything/Depth-Anything-V2-Small-hf"
+
+    # "cuda" usa GPU se disponível; "cpu" força CPU
+    device: "cuda"
+
+    # ── Tópicos ───────────────────────────────────────────────────────────────
+    input_topic: "/camera/camera/color/image_raw"
+    camera_info_topic: "/camera/camera/color/camera_info"
+    output_topic: "/depth/image_raw"          # 32FC1 — unidades relativas ou métricas
+    visual_topic: "/depth/image_visual"        # rgb8  — colormap INFERNO
+
+    # ── Publicação ────────────────────────────────────────────────────────────
+    publish_visual: true
+    queue_size: 5
+
+    # ── Normalização visual ───────────────────────────────────────────────────
+    # Afeta apenas a imagem de visualização, não o depth raw
+    min_depth: 0.1    # metros
+    max_depth: 10.0   # metros

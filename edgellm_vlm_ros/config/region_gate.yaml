@@ -1,0 +1,104 @@
+vlm_region_gate:
+  ros__parameters:
+    # VLM result topic containing the region JSON string from edgellm_vlm_node.
+    vlm_result_topic: "/edgellm_vlm_node/result"
+
+    # RGB-aligned D435i depth. Region cells must cover the same view the VLM saw.
+    depth_topic: "/camera/camera/aligned_depth_to_color/image_raw"
+
+    # CameraInfo matching the aligned depth/color optical frame.
+    depth_camera_info_topic: "/camera/camera/aligned_depth_to_color/camera_info"
+
+    # Optional ENU nav_msgs/Odometry fallback; leave empty when using PX4 local position directly.
+    odometry_topic: ""
+
+    # Optional ENU PoseStamped fallback; leave empty when using PX4 local position directly.
+    pose_topic: ""
+
+    # PX4 fused local position topic used as the primary drone pose source; converted NED -> ENU.
+    vehicle_local_position_topic: "/fmu/out/vehicle_local_position"
+
+    # Region mode transforms the timestamped RGB-D point directly into map.
+    # This bypasses relative_goal_to_map so inference latency cannot apply the
+    # old observation using the newest odometry.
+    goal_output_mode: "map"
+    goal_topic: "/move_base_simple/goal"
+
+    # Legacy relative-output frame plus production TF frames.
+    goal_frame_id: "base_link"
+    body_frame_id: "base_link"
+    map_frame_id: "map"
+    planner_status_topic: "/planning/goal_status"
+
+    # Coarse image grid the VLM selects a region from. Must match the names in region_system_prompt.
+    grid_cols: 3
+    grid_rows: 3
+
+    # "open_space": navigate toward the most-open region (depth fallback when the VLM is unsure).
+    # "target": approach the region the VLM reports the target object in; HOLD when not found.
+    # Use "target" together with target_object set on edgellm_vlm_node (vlm_node.yaml).
+    selection_mode: "open_space"
+
+    # When false, ignore the VLM and always navigate to the most-open region from depth alone.
+    # Only applies to "open_space" mode.
+    use_vlm_region: true
+
+    # Minimum VLM confidence required before its chosen region is used.
+    min_confidence: 0.50
+
+    # A region must have at least this much clear depth (m) to count as open/usable (open_space mode).
+    min_clearance_m: 0.8
+
+    # In "target" mode, stop this far (m) short of the target surface.
+    standoff_m: 0.8
+
+    # Publish a goal automatically on each usable decision (subject to cooldown). False = manual via execute_next.
+    auto_execute: true
+
+    # Require the same accepted cell in this many consecutive VLM results.
+    consistency_required: 3
+
+    # Suppress a candidate closer than this to the last completed/published map goal.
+    goal_update_min_distance_m: 0.5
+
+    # Keep a goal active until planner feedback is reached/rejected/failed.
+    wait_for_planner_status: true
+
+    # Release an active goal after this many consecutive depth checks mark its cell unsafe.
+    safety_loss_required: 2
+
+    # Depth scale for 16UC1 depth images; RealSense depth is usually millimeters.
+    depth_scale_m: 0.001
+
+    # Minimum valid depth accepted within a region.
+    min_depth_m: 0.5
+
+    # Maximum valid depth accepted within a region.
+    max_depth_m: 7.5
+
+    # Maximum horizontal distance for one published goal; longer projections are clamped.
+    max_goal_distance_m: 5.0
+
+    # Z behavior: "current_pose" keeps the current z plane; "fixed" uses fixed_goal_z_m.
+    goal_z_mode: "current_pose"
+
+    # Fixed ENU z value used when goal_z_mode is "fixed".
+    fixed_goal_z_m: 1.0
+
+    # Minimum time between published ego-planner goals.
+    cooldown_s: 2.0
+
+    # Maximum age of the latest VLM region result when publishing a goal.
+    max_result_age_s: 2.5
+
+    # Maximum age of the latest depth image when publishing a goal.
+    max_depth_age_s: 0.5
+
+    # Maximum age of the latest pose message when publishing a goal.
+    max_pose_age_s: 1.0
+
+    # Timestamped RGB-D/TF controls for map output mode.
+    max_source_age_s: 8.0
+    depth_sync_tolerance_s: 0.10
+    depth_history_size: 300
+    tf_timeout_s: 0.15

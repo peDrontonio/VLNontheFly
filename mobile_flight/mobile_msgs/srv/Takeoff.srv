@@ -1,0 +1,4 @@
+float32 altitude  # Altitude in meters (positive goes up)
+---
+bool success
+string message

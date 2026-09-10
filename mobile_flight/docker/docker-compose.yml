@@ -1,0 +1,54 @@
+###############################################################################
+# PX4 + ROS 2 Humble + Gazebo  —  docker-compose
+#
+# Usage:
+#   docker compose build        # Build the image (first time / after Dockerfile changes)
+#   docker compose run sim      # Open an interactive shell inside the container
+#
+# Inside the container you can run:
+#   1)  cd ~/imav_ws/PX4-Autopilot && make px4_sitl gz_x500   # PX4 SITL + Gazebo
+#   2)  MicroXRCEAgent udp4 -p 8888                   # DDS Agent
+#   3)  cd ~/imav_ws && colcon build --symlink-install # Build ROS 2 workspace
+#   4)  ros2 launch flight_control simulation_launch.py
+###############################################################################
+
+services:
+  sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USERNAME: user
+        USER_UID: 1000
+        USER_GID: 1000
+    image: mobile_flight:latest
+    container_name: mobile_flight_sim
+    privileged: true
+    network_mode: host
+    stdin_open: true
+    tty: true
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      # PX4 SITL networking
+      - PX4_SIM_HOST_ADDR=
+    devices:
+      # Pixhawk USB (typically /dev/ttyACM0)
+      - /dev/ttyACM0:/dev/ttyACM0
+    volumes:
+      # Mount the mobile_flight package into the workspace
+      - ..:/home/user/imav_ws/src/mobile_flight
+      # Mount the local PX4-Autopilot fork into the container
+      - ../../../PX4-Autopilot:/home/user/imav_ws/PX4-Autopilot
+      # X11 for Gazebo GUI
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # GPU acceleration (NVIDIA)
+      - /dev/dri:/dev/dri
+    # Uncomment below for NVIDIA GPU support (requires nvidia-container-toolkit)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]

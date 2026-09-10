@@ -1,0 +1,34 @@
+vlm_nav_supervisor:
+  ros__parameters:
+    # Automatically call gate execute services when the state machine has an accepted proposal.
+    auto_execute: false
+
+    # State-machine update rate in Hz.
+    tick_hz: 1.0
+
+    # Number of point-gate rejections before asking the VLM for an altitude primitive.
+    point_rejection_limit: 3
+
+    # Number of primitive-gate rejections before entering HOLD.
+    primitive_rejection_limit: 2
+
+    # Maximum accepted proposal age before the supervisor refuses to execute it.
+    max_proposal_age_s: 3.0
+
+    # Time to wait after an altitude primitive before returning to point mode.
+    settle_s: 2.0
+
+    # Service used to switch the single VLM runtime to point mode when true, primitive mode when false.
+    point_mode_service: "/edgellm_vlm_node/set_point_mode"
+
+    # Service used to execute the latest accepted point goal.
+    point_execute_service: "/vlm_point_gate/execute_next"
+
+    # Service used to execute the latest accepted altitude primitive.
+    primitive_execute_service: "/vlm_primitive_gate/execute_next"
+
+    # Point-gate proposal topic monitored by the supervisor.
+    point_proposal_topic: "/vlm_point_gate/proposal"
+
+    # Primitive-gate proposal topic monitored by the supervisor.
+    primitive_proposal_topic: "/vlm_primitive_gate/proposal"
