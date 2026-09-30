@@ -112,19 +112,27 @@ def _loads_lenient(text: str) -> Any:
     except json.JSONDecodeError:
         def find(keys: Tuple[str, ...]) -> Optional[str]:
             for key in keys:
-                match = re.search(r'"%s"\s*:\s*\[?\s*(-?\d+(?:\.\d+)?)' % key, text)
+                match = re.search(
+                    r'"%s"\s*:\s*\[?\s*((-?\d+(?:\.\d+)?)(?:\s*,\s*-?\d+(?:\.\d+)?)*)' % key,
+                    text)
                 if match is not None:
                     return match.group(1)
             return None
+
+        def axis(raw: str, index: int) -> float:
+            values = [float(value) for value in re.split(r"[,\s]+", raw) if value]
+            return _scalar_pixel(values, index)
 
         u = find(("u", "x", "pixel_x"))
         v = find(("v", "y", "pixel_y"))
         if u is None or v is None:
             raise
-        recovered: Dict[str, Any] = {"u": float(u), "v": float(v)}
+        # A VLM may put the full [x, y] pair into both keys (see _scalar_pixel);
+        # recover the intended axis by index the same way the strict path does.
+        recovered: Dict[str, Any] = {"u": axis(u, 0), "v": axis(v, 1)}
         confidence = find(("confidence", "conf", "score"))
         if confidence is not None:
-            recovered["confidence"] = min(1.0, float(confidence))
+            recovered["confidence"] = min(1.0, axis(confidence, 0))
         return recovered
 
 
