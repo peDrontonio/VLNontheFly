@@ -52,6 +52,22 @@ class TestVlmPointGate(unittest.TestCase):
         self.assertEqual(proposal.image_width, 640)
         self.assertEqual(proposal.image_height, 480)
 
+    def test_parse_array_pixels_recovers_second_element_for_v(self):
+        # Some VLMs emit the full [x, y] pair into both u and v keys. When the
+        # output is truncated, the lenient fallback must still pick u=first,
+        # v=second (matching _scalar_pixel on the strict path).
+        proposal = gate.parse_vlm_result(
+            result_with_text('{"u":[500,370],"v":[500,370],"confidence":0.8'))
+
+        self.assertEqual(proposal.u, 500.0)
+        self.assertEqual(proposal.v, 370.0)
+
+    def test_lenient_recovery_of_array_pixels_uses_index(self):
+        recovered = gate._loads_lenient('{"u":[500,370],"v":[500,370],"confidence":0.8')
+
+        self.assertEqual(recovered["u"], 500.0)
+        self.assertEqual(recovered["v"], 370.0)
+
     def test_reject_natural_language_text(self):
         with self.assertRaises(json.JSONDecodeError):
             gate.parse_vlm_result(result_with_text("Move toward the open area."))
